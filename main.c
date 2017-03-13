@@ -26,12 +26,17 @@
 #define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY
 #endif
 
+
 /* listener port */
 #define DEFAULT_HTTPD_PORT 8888
 /* MHD_OPTION_CONNECTION_TIMEOUT */
 #define DEFAULT_HTTPD_CONNECTION_TIMEOUT 15
 /* MHD_OPTION_THREAD_POOL_SIZE */
 #define DEFAULT_HTTPD_THREAD_POOL_SIZE 1
+/* MHD_OPTION_CONNECTION_MEMORY_LIMIT */
+#define DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT (128 * 1024)
+/* MHD_OPTION_CONNECTION_MEMORY_INCREMENT */
+#define DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT (4 * 1024)
 
 
 typedef struct _httpd_options {
@@ -39,6 +44,8 @@ typedef struct _httpd_options {
 	uint16_t 	port;
 	int 		connect_timeout;
 	unsigned int	thread_pool_size;
+	size_t		memory_limit;
+	size_t		memory_increment;
 } httpd_options;
 
 
@@ -61,10 +68,13 @@ static struct MHD_Daemon *
 start_httpd (httpd_options *ops)
 {
 	struct MHD_Daemon *daemon;
-
-#define CONNECTION_TIMEOUT 	0
-#define REQUEST_COMPLETED_CB	1
-#define THREAD_POOL_SIZE	2
+	enum daemon_options_index {
+		CONNECTION_TIMEOUT = 0,
+		REQUEST_COMPLETED_CB,
+		THREAD_POOL_SIZE,
+		MEMORY_LIMIT,
+		MEMORY_INCREMENT
+	};
 	struct MHD_OptionItem daemon_options[] = {
 		{
 			/* unsigned int */
@@ -84,20 +94,32 @@ start_httpd (httpd_options *ops)
 			DEFAULT_HTTPD_THREAD_POOL_SIZE,
 			NULL
 		},
+		{
+			/* size_t */
+			MHD_OPTION_CONNECTION_MEMORY_LIMIT,
+			DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT,
+			NULL
+		},
+		{
+			/* size_t */
+			MHD_OPTION_CONNECTION_MEMORY_INCREMENT,
+			DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT,
+			NULL
+		},
 		{ 	MHD_OPTION_END, 0, NULL } /* must be always be last */
 	};
 
 	daemon_options[CONNECTION_TIMEOUT].value = ops->connect_timeout;
 	daemon_options[THREAD_POOL_SIZE].value = ops->thread_pool_size;
-
-#undef CONNECTION_TIMEOUT
-#undef REQUEST_COMPLETED_CB
-#undef THREAD_POOL_SIZE
+	daemon_options[MEMORY_LIMIT].value = ops->memory_limit;
+	daemon_options[MEMORY_INCREMENT].value = ops->memory_increment;
 
 	debug ("* Powered by libmicrohttpd version %s\n", MHD_get_version ());
 	debug ("* Start listener on port %d\n", ops->port);
 	debug ("* Connection timeout: %d\n", ops->connect_timeout);
 	debug ("* Thread pool size: %d\n", ops->thread_pool_size);
+	debug ("* Memory limit per connection: %u\n", ops->memory_limit);
+	debug ("* Memory increment per connection: %u\n", ops->memory_increment);
 
 	daemon = MHD_start_daemon (
 		ops->mode,
@@ -138,6 +160,14 @@ print_usage (const char *argv0)
 		DEFAULT_HTTPD_CONNECTION_TIMEOUT);
 	desc ("-t CONNECTION_TIMEOUT", buffer);
 	snprintf (buffer, 256,
+		"increment to use for growing the read buffer, default %d",
+		DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT);
+	desc ("-I MEMORY_INCEMENT", buffer);
+	snprintf (buffer, 256,
+		"max memory size per connection, default %d",
+		DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT);
+	desc ("-M MEMORY_LIMIT", buffer);
+	snprintf (buffer, 256,
 		"an amount of threads, default %d",
 		DEFAULT_HTTPD_THREAD_POOL_SIZE);
 	desc ("-T THREADS_NUM", buffer);
@@ -156,8 +186,10 @@ main (int argc, char *argv[])
 	ops.port = DEFAULT_HTTPD_PORT;
 	ops.connect_timeout = DEFAULT_HTTPD_CONNECTION_TIMEOUT;
 	ops.thread_pool_size = DEFAULT_HTTPD_THREAD_POOL_SIZE;
+	ops.memory_limit = DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT;
+	ops.memory_increment = DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT;
 
-	while ((opt = getopt (argc, argv, "p:t:")) != -1) {
+	while ((opt = getopt (argc, argv, "p:t:I:M:T:")) != -1) {
 		switch (opt) {
 		case 'p': {
 			int port;
@@ -172,6 +204,20 @@ main (int argc, char *argv[])
 			if (timeout < 0)
 				die ("Invalid timeout: %s.", optarg);
 			ops.connect_timeout = timeout;
+		} break;
+		case 'I': {
+			int increment;
+			sscanf (optarg, "%d", &increment);
+			if (increment < 0)
+				die ("Invalid memory increment: %s.", optarg);
+			ops.memory_increment = increment;
+		} break;
+		case 'M': {
+			int limit;
+			sscanf (optarg, "%d", &limit);
+			if (limit < 0)
+				die ("Invalid memory limit: %s.", optarg);
+			ops.memory_limit = limit;
 		} break;
 		case 'T': {
 			int num;
