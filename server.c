@@ -1,8 +1,12 @@
 #include "mhd.h"
 #include "common.h"
+#include <sys/stat.h>
+#include <errno.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
-
-#ifdef _MSC_VER
+#if defined (_MSC_VER)
 #ifndef strcasecmp
 #define strcasecmp(a,b) _stricmp((a),(b))
 #endif /* !strcasecmp */
@@ -18,21 +22,6 @@
    performance, use 32k or 64k (i.e. 65536).
 */
 #define POSTBUFFERSIZE (32 * 1024)
-
-
-extern void
-warn (struct MHD_Connection *connection, const char *fmt, ...);
-
-static int
-upload_post_chunk (	void *coninfo_cls,
-			enum MHD_ValueKind kind,
-			const char *key,
-			const char *filename,
-			const char *content_type,
-			const char *transfer_encoding,
-			const char *data,
-			uint64_t off,
-			size_t size);
 
 
 enum request_type {
@@ -51,6 +40,9 @@ typedef struct _request_info {
 	/* File handle where we write uploaded data. */
 	FILE *fh;
 
+	/* Filename to upload */
+	char *filename;
+
 	/* HTTP response body we will return, NULL if not yet known. */
 	struct MHD_Response *response;
 
@@ -59,22 +51,74 @@ typedef struct _request_info {
 } request_info;
 
 
-static struct MHD_Response *default_response;
-static struct MHD_Response *complete_response;
+enum {
+	PAGE_DEFAULT = 0,
+	PAGE_COMPLETED,
+	PAGE_BAD_REQUEST,
+	PAGE_FILE_EXISTS,
+	PAGE_IO_ERROR,
+	PAGE_MAX
+};
 
-static const char *default_page = "<html>"
-"<head><title>x11mirror-server</title></head>"
-"<body>"
-"<h1>Hello!</h1>"
-"</body></html>";
+static struct MHD_Response *responses[PAGE_MAX];
+static const char * pages[PAGE_MAX];
 
-static const char *complete_page = "<html>"
-"<head><title>x11mirror-server</title></head>"
-"<body>"
-"<h1>Upload completed.</h1>"
-"</body></html>";
 
 #define DEFAULT_CONTENT_TYPE "text/html; charset=iso-8859-1"
+
+#define _HEAD_TITLE "<head><title>x11mirror-server</title></head>"
+
+#define _DEFAULT "<html>" _HEAD_TITLE \
+"<body>"\
+"<h1>Hello!</h1>"\
+"</body></html>"
+
+#define _COMPLETED "<html>" _HEAD_TITLE \
+"<body>"\
+"<h1>Upload completed.</h1>"\
+"</body></html>"
+
+#define _EXISTS "<html>" _HEAD_TITLE \
+"<body>"\
+"<h1>File exists.</h1>"\
+"</body></html>"
+
+#define _IO_ERROR "<html>" _HEAD_TITLE \
+"<body>"\
+"<h1>Internal server error: I/O error.</h1>"\
+"</body></html>"
+
+#define _BAD_REQUEST "<html>" _HEAD_TITLE \
+"<body>"\
+"<h1>Bad request.</h1>"\
+"</body></html>"
+
+
+extern void
+warn (struct MHD_Connection *connection, const char *fmt, ...);
+
+
+static int
+upload_post_chunk (	void *coninfo_cls,
+			enum MHD_ValueKind kind,
+			const char *key,
+			const char *filename,
+			const char *content_type,
+			const char *transfer_encoding,
+			const char *data,
+			uint64_t off,
+			size_t size);
+
+static FILE *
+open_file (	const char *filename,
+		struct MHD_Response **response,
+		unsigned int *status);
+
+static void
+destroy_request_info (request_info *req);
+
+
+/* ------------------------------------------------------------------ */
 
 
 extern int
@@ -104,13 +148,13 @@ answer_cb (	void *cls,
 		size_t *upload_data_size,
 		void **con_cls)
 {
-	request_info *req;
+	request_info *req = *con_cls;
 	(void) cls;
 	(void) url;
 	(void) version;
 
 
-	if (NULL == *con_cls) {
+	if (req == NULL) {
 		/* initialize our request information */
 		req = malloc (sizeof (*req));
 
@@ -133,7 +177,7 @@ answer_cb (	void *cls,
 			if (req->pp == NULL) {
 				warn (	connection,
 					"failed to create post processor");
-				free (req);
+				destroy_request_info (req);
 				return MHD_NO;
 			}
 
@@ -143,47 +187,63 @@ answer_cb (	void *cls,
 			req->type = GET;
 
 		*con_cls = (void *) req;
+
+		return MHD_YES;
 	}
 
 	if (req->status != 0) {
+		/* something went wrong */
+		if (*upload_data_size == 0) {
+			/* we can send a response only after reading all
+			   headers & data. */
+			return MHD_queue_response
+				(connection, req->status, req->response);
+		}
+
+		/* do nothing and wait... */
 		*upload_data_size = 0;
+
 		return MHD_YES;
 	}
 
 	if (req->type == POST) {
 		if (*upload_data_size > 0) {
 			/* uploading data */
-			MHD_post_process (
+			(void) MHD_post_process (
 				req->pp,
 				upload_data,
 				*upload_data_size);
+
 			*upload_data_size = 0;
+
 			return MHD_YES;
 		}
-		else {
-			/* upload has been finished */
+
+		/* upload has been finished */
+		warn (connection, "uploaded `%s'", req->filename);
+
+		if (req->fh != NULL) {
 			fclose (req->fh);
 			req->fh = NULL;
 		}
 
 		if (req->status == 0) {
-			req->response = complete_response;
+			req->response = responses[PAGE_COMPLETED];
 			req->status = MHD_HTTP_OK;
 		}
 
 		return MHD_queue_response
 			(connection, req->status, req->response);
 	}
-	else {
-		/* GET */
-		return MHD_queue_response
-			(connection, MHD_HTTP_OK, default_response);
-	}
+
+	/* GET */
+	return MHD_queue_response
+		(connection, MHD_HTTP_OK, responses[PAGE_DEFAULT]);
 }
 
 
 static int
-upload_post_chunk (void *coninfo_cls,
+upload_post_chunk (void *con_cls,
               enum MHD_ValueKind kind,
               const char *key,
               const char *filename,
@@ -193,7 +253,79 @@ upload_post_chunk (void *coninfo_cls,
               uint64_t off,
               size_t size)
 {
+	request_info *req = con_cls;
+	(void) kind;
+	(void) content_type;
+	(void) transfer_encoding;
+	(void) off;
+
+
+	if (       (filename == NULL)
+		|| (strlen (filename) == 0)
+		|| (strncmp (key, "file", 5) != 0))
+	{
+		req->response = responses[PAGE_BAD_REQUEST];
+		req->status = MHD_HTTP_BAD_REQUEST;
+		return MHD_YES;
+	}
+
+	if (req->fh == NULL) {
+		struct MHD_Response *response;
+		unsigned int status;
+
+		req->fh = open_file (filename, &response, &status);
+
+		if (req->fh != NULL) {
+			req->filename = strdup (filename);
+		}
+		else {
+			req->response = response;
+			req->status = status;
+			return MHD_YES;
+		}
+	}
+
+	if (size > 0) {
+		if (! fwrite (data, sizeof (char), size, req->fh)) {
+			req->response = responses[PAGE_IO_ERROR];
+			req->status = MHD_HTTP_INTERNAL_SERVER_ERROR;
+		}
+	}
+
 	return MHD_YES;
+}
+
+
+static FILE *
+open_file (	const char *filename,
+		struct MHD_Response **response,
+		unsigned int *status)
+{
+	static FILE *fh;
+
+
+	/* check if the file exists */
+	fh = fopen (filename, "rb");
+
+	if (fh == NULL) {
+		fh = fopen (filename, "ab");
+
+		if (fh == NULL) {
+			fprintf (stderr, "failed to open %s: %s\n",
+				filename,
+				strerror (errno));
+			*response = responses[PAGE_IO_ERROR];
+			*status = MHD_HTTP_INTERNAL_SERVER_ERROR;
+		}
+	}
+	else {
+		fclose (fh);
+		fh = NULL;
+		*response = responses[PAGE_FILE_EXISTS];
+		*status = MHD_HTTP_FORBIDDEN;
+	}
+
+	return fh;
 }
 
 
@@ -212,12 +344,9 @@ request_completed_cb (	void *cls,
 	request_info *req = *con_cls;
 	(void) cls;
 
+
 	if (req != NULL) {
-		if (req->pp != NULL)
-			MHD_destroy_post_processor (req->pp);
-		if (req->fh != NULL)
-			fclose (req->fh);
-		free (req);
+		destroy_request_info (req);
 		*con_cls = NULL;
 	}
 
@@ -299,37 +428,47 @@ warn (struct MHD_Connection *connection, const char *fmt, ...)
 extern void
 init_mhd_responses (void)
 {
-	default_response = MHD_create_response_from_buffer (
-				strlen (default_page),
-				(void *) default_page,
+	pages[PAGE_DEFAULT] = _DEFAULT;
+	pages[PAGE_COMPLETED] = _COMPLETED;
+	pages[PAGE_FILE_EXISTS] = _EXISTS;
+	pages[PAGE_IO_ERROR] = _IO_ERROR;
+	pages[PAGE_BAD_REQUEST] = _BAD_REQUEST;
+
+	for (int i = 0; i < PAGE_MAX; i++) {
+		responses[i] = MHD_create_response_from_buffer (
+				strlen (pages[i]),
+				(void *) pages[i],
 				MHD_RESPMEM_PERSISTENT);
 
-	if (!default_response)
-		die ("failed to create default response");
+		if (responses[i] == NULL)
+			die ("failed to create page #%d", i);
 
-	complete_response = MHD_create_response_from_buffer (
-				strlen (complete_page),
-				(void *) complete_page,
-				MHD_RESPMEM_PERSISTENT);
-
-	if (!complete_response)
-		die ("failed to create complete response");
-
-	MHD_add_response_header (
-		default_response,
-		MHD_HTTP_HEADER_CONTENT_TYPE,
-		DEFAULT_CONTENT_TYPE);
-
-	MHD_add_response_header (
-		complete_response,
-		MHD_HTTP_HEADER_CONTENT_TYPE,
-		DEFAULT_CONTENT_TYPE);
+		MHD_add_response_header (
+			responses[i],
+			MHD_HTTP_HEADER_CONTENT_TYPE,
+			DEFAULT_CONTENT_TYPE);
+	}
 }
 
 
 extern void
 free_mhd_responses (void)
 {
-	MHD_destroy_response (default_response);
-	MHD_destroy_response (complete_response);
+	for (int i = 0; i < PAGE_MAX; i++)
+		MHD_destroy_response (responses[i]);
+}
+
+static void
+destroy_request_info (request_info *req)
+{
+	if (req->filename != NULL)
+		free (req->filename);
+
+	if (req->pp != NULL)
+		MHD_destroy_post_processor (req->pp);
+
+	if (req->fh != NULL)
+		fclose (req->fh);
+
+	free (req);
 }

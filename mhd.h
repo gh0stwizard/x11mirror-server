@@ -13,6 +13,7 @@
 #if defined (_WIN32)
 #include <winsock2.h>
 #else
+#define _XOPEN_SOURCE 500 /* strdup */
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
