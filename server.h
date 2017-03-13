@@ -22,4 +22,10 @@ request_completed_cb (	void *cls,
 			void **con_cls,
 			enum MHD_RequestTerminationCode toe);
 
+extern void
+init_mhd_responses (void);
+
+extern void
+free_mhd_responses (void);
+
 #endif /* __SERVER_H */

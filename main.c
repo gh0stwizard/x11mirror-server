@@ -64,6 +64,9 @@ print_usage (const char *argv0);
 } while (0)
 
 
+/* ------------------------------------------------------------------ */
+
+
 static struct MHD_Daemon *
 start_httpd (httpd_options *ops)
 {
@@ -132,12 +135,11 @@ start_httpd (httpd_options *ops)
 	return daemon;
 }
 
-/* ------------------------------------------------------------------ */
 
 static void
 stop_httpd (struct MHD_Daemon *daemon)
 {
-	debug ("shutdown daemon\n");
+	debug ("* Shutdown daemon.\n");
 
 	if (daemon != NULL)
 		MHD_stop_daemon (daemon);
@@ -232,6 +234,9 @@ main (int argc, char *argv[])
 		} /* switch (opt) { */
 	} /* while ((opt = getopt (...) */
 
+	/* initialize MHD default responses */
+	init_mhd_responses ();
+
 	daemon = start_httpd (&ops);
 
 	if (daemon == NULL) {
@@ -240,7 +245,9 @@ main (int argc, char *argv[])
 	}
 
 	(void) getchar ();
+
 	stop_httpd (daemon);
+	free_mhd_responses ();
 
 	return 0;
 }
