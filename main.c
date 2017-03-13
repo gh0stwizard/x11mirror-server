@@ -1,18 +1,6 @@
-#include <sys/types.h>
-#if defined (_WIN32)
-#include <winsock2.h>
-#else
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#endif
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdarg.h>
-#include <microhttpd.h>
+#include "mhd.h"
 #include "common.h"
+#include "server.h"
 
 #ifdef _MSC_VER
 #ifndef strcasecmp
@@ -40,14 +28,17 @@
 
 /* listener port */
 #define DEFAULT_HTTPD_PORT 8888
-
+/* MHD_OPTION_CONNECTION_TIMEOUT */
 #define DEFAULT_HTTPD_CONNECTION_TIMEOUT 15
+/* MHD_OPTION_THREAD_POOL_SIZE */
+#define DEFAULT_HTTPD_THREAD_POOL_SIZE 1
 
 
 typedef struct _httpd_options {
 	unsigned int 	mode;
 	uint16_t 	port;
 	int 		connect_timeout;
+	unsigned int	thread_pool_size;
 } httpd_options;
 
 
@@ -56,25 +47,6 @@ start_httpd (httpd_options *ops);
 
 static void
 stop_httpd (struct MHD_Daemon *daemon);
-
-static int
-accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen);
-
-static int
-answer_cb (	void *cls,
-		struct MHD_Connection *connection,
-		const char *url,
-		const char *method,
-		const char *version,
-		const char *upload_data,
-		size_t *upload_data_size,
-		void **con_cls);
-
-static void
-request_completed_cb (	void *cls,
-			struct MHD_Connection *connection,
-			void **con_cls,
-			enum MHD_RequestTerminationCode toe);
 
 static void
 print_usage (const char *argv0);
@@ -92,8 +64,11 @@ start_httpd (httpd_options *ops)
 
 #define CONNECTION_TIMEOUT 	0
 #define REQUEST_COMPLETED_CB	1
+#define THREAD_POOL_SIZE	2
 	struct MHD_OptionItem daemon_options[] = {
-		{ 	MHD_OPTION_CONNECTION_TIMEOUT,
+		{
+			/* unsigned int */
+			MHD_OPTION_CONNECTION_TIMEOUT,
 			DEFAULT_HTTPD_CONNECTION_TIMEOUT,
 			NULL
 		},
@@ -103,16 +78,26 @@ start_httpd (httpd_options *ops)
 			(intptr_t) &request_completed_cb,
 			NULL
 		},
+		{
+			/* unsigned int */
+			MHD_OPTION_THREAD_POOL_SIZE,
+			DEFAULT_HTTPD_THREAD_POOL_SIZE,
+			NULL
+		},
 		{ 	MHD_OPTION_END, 0, NULL } /* must be always be last */
 	};
 
 	daemon_options[CONNECTION_TIMEOUT].value = ops->connect_timeout;
+	daemon_options[THREAD_POOL_SIZE].value = ops->thread_pool_size;
 
 #undef CONNECTION_TIMEOUT
 #undef REQUEST_COMPLETED_CB
+#undef THREAD_POOL_SIZE
 
+	debug ("* Powered by libmicrohttpd version %s\n", MHD_get_version ());
 	debug ("* Start listener on port %d\n", ops->port);
 	debug ("* Connection timeout: %d\n", ops->connect_timeout);
+	debug ("* Thread pool size: %d\n", ops->thread_pool_size);
 
 	daemon = MHD_start_daemon (
 		ops->mode,
@@ -125,98 +110,15 @@ start_httpd (httpd_options *ops)
 	return daemon;
 }
 
+/* ------------------------------------------------------------------ */
 
 static void
 stop_httpd (struct MHD_Daemon *daemon)
 {
+	debug ("shutdown daemon\n");
+
 	if (daemon != NULL)
 		MHD_stop_daemon (daemon);
-}
-
-
-static int
-accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen)
-{
-	struct sockaddr_in *addr_in = (struct sockaddr_in *) addr;
-
-	/* ???: inet_ntop/WSAAddressToString */
-	debug ("* Connection from %s port %d\n",
-		inet_ntoa (addr_in->sin_addr),
-		addr_in->sin_port);
-
-	return MHD_YES;
-}
-
-
-static int
-answer_cb (	void *cls,
-		struct MHD_Connection *connection,
-		const char *url,
-		const char *method,
-		const char *version,
-		const char *upload_data,
-		size_t *upload_data_size,
-		void **con_cls)
-{
-	return MHD_YES;
-}
-
-
-static void
-request_completed_cb (	void *cls,
-			struct MHD_Connection *connection,
-			void **con_cls,
-			enum MHD_RequestTerminationCode toe)
-{
-	char *tdesc;
-	const union MHD_ConnectionInfo *ci;
-	char *ip_addr;
-	in_port_t port;
-
-
-	ci = MHD_get_connection_info (
-		connection,
-		MHD_CONNECTION_INFO_CLIENT_ADDRESS);
-
-	if (ci != NULL) {
-		struct sockaddr_in *addr_in = *(struct sockaddr_in **) ci;
-		ip_addr = inet_ntoa (addr_in->sin_addr);
-		port = addr_in->sin_port;
-	}
-	else {
-		fprintf (stderr, "failed to get client info address\n");
-		ip_addr = "<unknown>";
-		port = 0;
-	}
-
-	switch (toe) {
-	case MHD_REQUEST_TERMINATED_COMPLETED_OK:
-		tdesc = "OK";
-		break;
-	case MHD_REQUEST_TERMINATED_WITH_ERROR:
-		tdesc = "ERROR";
-		break;
-	case MHD_REQUEST_TERMINATED_TIMEOUT_REACHED:
-		tdesc = "TIMED OUT";
-		break;
-	case MHD_REQUEST_TERMINATED_DAEMON_SHUTDOWN:
-		tdesc = "SHUTDOWN";
-		break;
-	case MHD_REQUEST_TERMINATED_READ_ERROR:
-		tdesc = "READ ERROR";
-		break;
-	case MHD_REQUEST_TERMINATED_CLIENT_ABORT:
-		tdesc = "CLIENT ABORT";
-		break;
-	default:
-		tdesc = "UNKNOWN";
-		break;
-	}
-
-	debug ("* Connection %s port %d closed: %s\n",
-		ip_addr, port, tdesc);
-
-	*con_cls = NULL;
 }
 
 
@@ -235,6 +137,10 @@ print_usage (const char *argv0)
 		"a connection timeout in seconds, default %d sec.",
 		DEFAULT_HTTPD_CONNECTION_TIMEOUT);
 	desc ("-t CONNECTION_TIMEOUT", buffer);
+	snprintf (buffer, 256,
+		"an amount of threads, default %d",
+		DEFAULT_HTTPD_THREAD_POOL_SIZE);
+	desc ("-T THREADS_NUM", buffer);
 #undef desc
 }
 
@@ -249,6 +155,7 @@ main (int argc, char *argv[])
 	ops.mode = DEFAULT_HTTPD_MODE;
 	ops.port = DEFAULT_HTTPD_PORT;
 	ops.connect_timeout = DEFAULT_HTTPD_CONNECTION_TIMEOUT;
+	ops.thread_pool_size = DEFAULT_HTTPD_THREAD_POOL_SIZE;
 
 	while ((opt = getopt (argc, argv, "p:t:")) != -1) {
 		switch (opt) {
@@ -266,11 +173,18 @@ main (int argc, char *argv[])
 				die ("Invalid timeout: %s.", optarg);
 			ops.connect_timeout = timeout;
 		} break;
+		case 'T': {
+			int num;
+			sscanf (optarg, "%d", &num);
+			if (num <= 0)
+				die ("Invalid thread pool size: %s.", optarg);
+			ops.thread_pool_size = num;
+		} break;
 		default: /* -? */
 			print_usage_exit (argv[0]);
 			break;
 		} /* switch (opt) { */
-	}
+	} /* while ((opt = getopt (...) */
 
 	daemon = start_httpd (&ops);
 
