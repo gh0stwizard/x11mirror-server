@@ -1,7 +1,12 @@
 #include "mhd.h"
 #include "common.h"
-#include <sys/stat.h>
+#include "suspend.h"
+#include "warn.h"
+
+#include <limits.h>
 #include <errno.h>
+#include <stdbool.h>
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -13,6 +18,13 @@
 #else
 #include <strings.h>
 #endif /* _MSC_VER */
+
+
+/* allow only one uploader per a moment */
+volatile bool busy = false;
+
+/* we copy daemon handler because of suspend/resume + MHD_run () */
+static struct MHD_Daemon *daemon;
 
 
 /* From libmicrohttpd manual:
@@ -48,6 +60,12 @@ typedef struct _request_info {
 
 	/* HTTP status code we will return, 0 for undecided. */
 	unsigned int status;
+
+	/* Suspend index */
+	size_t suspend_index;
+
+	/* Is this request current uploader */
+	bool uploader;
 } request_info;
 
 
@@ -92,10 +110,6 @@ static const char * pages[PAGE_MAX];
 "<body>"\
 "<h1>Bad request.</h1>"\
 "</body></html>"
-
-
-extern void
-warn (struct MHD_Connection *connection, const char *fmt, ...);
 
 
 static int
@@ -166,6 +180,9 @@ answer_cb (	void *cls,
 		req->status = 0; /* we are not finished yet */
 		req->pp = NULL;
 		req->fh = NULL;
+		req->filename = NULL;
+		req->suspend_index = UINT_MAX;
+		req->uploader = false;
 
 		if (0 == strcasecmp (method, MHD_HTTP_METHOD_POST)) {
 			req->pp = MHD_create_post_processor (
@@ -207,12 +224,23 @@ answer_cb (	void *cls,
 	}
 
 	if (req->type == POST) {
+		if (! req->uploader) {
+			if (busy)
+				req->suspend_index
+					= suspend_connection (connection);
+			else
+				resume_connection (req->suspend_index, daemon);
+		}
+
 		if (*upload_data_size > 0) {
 			/* uploading data */
 			(void) MHD_post_process (
 				req->pp,
 				upload_data,
 				*upload_data_size);
+
+			if (req->filename != NULL)
+				busy = req->uploader = true;
 
 			*upload_data_size = 0;
 
@@ -221,6 +249,11 @@ answer_cb (	void *cls,
 
 		/* upload has been finished */
 		warn (connection, "uploaded `%s'", req->filename);
+
+		if (busy && req->uploader) {
+			busy = req->uploader = false;
+			resume_all_connections (daemon);
+		}
 
 		if (req->fh != NULL) {
 			fclose (req->fh);
@@ -262,6 +295,7 @@ upload_post_chunk (void *con_cls,
 
 	if (       (filename == NULL)
 		|| (strlen (filename) == 0)
+		|| (strlen (filename) >= 256)
 		|| (strncmp (key, "file", 5) != 0))
 	{
 		req->response = responses[PAGE_BAD_REQUEST];
@@ -397,35 +431,6 @@ request_completed_cb (	void *cls,
 
 
 extern void
-warn (struct MHD_Connection *connection, const char *fmt, ...)
-{
-	va_list args;
-	const union MHD_ConnectionInfo *ci;
-	char *ip;
-	in_port_t port = 0;
-
-
-	ci = MHD_get_connection_info (
-		connection,
-		MHD_CONNECTION_INFO_CLIENT_ADDRESS);
-
-	if (ci != NULL) {
-		struct sockaddr_in *addr_in = *(struct sockaddr_in **) ci;
-		ip = inet_ntoa (addr_in->sin_addr);
-		port = addr_in->sin_port;
-	}
-	else
-		ip = "<unknown>";
-
-	va_start (args, fmt);
-	fprintf (stderr, "! %s port %u: ", ip, port);
-	vfprintf (stderr, fmt, args);
-	fprintf (stderr, "\n");
-	va_end (args);
-}
-
-
-extern void
 init_mhd_responses (void)
 {
 	pages[PAGE_DEFAULT] = _DEFAULT;
@@ -471,4 +476,17 @@ destroy_request_info (request_info *req)
 		fclose (req->fh);
 
 	free (req);
+}
+
+extern void
+setup_daemon_handler (struct MHD_Daemon *d)
+{
+	if (d != NULL)
+		daemon = d;
+}
+
+extern void
+clear_daemon_handler (void)
+{
+	daemon = NULL;
 }

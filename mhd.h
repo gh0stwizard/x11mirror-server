@@ -1,3 +1,6 @@
+#ifndef _MHD_H
+#define _MHD_H
+
 /*
    Taken from microhttpd.h
 
@@ -13,7 +16,9 @@
 #if defined (_WIN32)
 #include <winsock2.h>
 #else
+#ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 500 /* strdup */
+#endif
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -24,3 +29,5 @@
 #include <string.h>
 #include <stdarg.h>
 #include <microhttpd.h>
+
+#endif /* _MHD_H */

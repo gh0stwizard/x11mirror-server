@@ -28,4 +28,10 @@ init_mhd_responses (void);
 extern void
 free_mhd_responses (void);
 
+extern void
+setup_daemon_handler (struct MHD_Daemon *d);
+
+extern void
+clear_daemon_handler (void);
+
 #endif /* __SERVER_H */

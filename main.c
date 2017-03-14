@@ -1,6 +1,9 @@
 #include "mhd.h"
 #include "common.h"
 #include "server.h"
+#include "suspend.h"
+#include <time.h>
+#include <errno.h>
 
 #ifdef _MSC_VER
 #ifndef strcasecmp
@@ -17,13 +20,19 @@
 #if defined (__linux__)
 /* GNU/Linux try to use epoll */
 #if MHD_VERSION <= 0x00095000
-#define DEFAULT_HTTPD_MODE MHD_USE_EPOLL_INTERNALLY_LINUX_ONLY
+#define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY | MHD_USE_SUSPEND_RESUME
+/*
+MHD_USE_EPOLL_INTERNALLY_LINUX_ONLY \
+| MHD_USE_SUSPEND_RESUME
+*/
 #else
-#define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY | MHD_USE_EPOLL_LINUX_ONLY
+#define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY \
+| MHD_USE_EPOLL_LINUX_ONLY \
+| MHD_USE_SUSPEND_RESUME
 #endif
 #else
 /* Rest OS use select */
-#define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY
+#define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY | MHD_USE_SUSPEND_RESUME
 #endif
 
 
@@ -183,6 +192,14 @@ main (int argc, char *argv[])
 	struct MHD_Daemon *daemon;
 	httpd_options ops;
 	int opt;
+	struct timeval tv;
+	struct timeval *tvp;
+	fd_set rs;
+	fd_set ws;
+	fd_set es;
+	MHD_socket max;
+	MHD_UNSIGNED_LONG_LONG mhd_timeout;
+
 
 	ops.mode = DEFAULT_HTTPD_MODE;
 	ops.port = DEFAULT_HTTPD_PORT;
@@ -236,17 +253,55 @@ main (int argc, char *argv[])
 
 	/* initialize MHD default responses */
 	init_mhd_responses ();
-
+	init_suspend_pool ();
+	
 	daemon = start_httpd (&ops);
 
 	if (daemon == NULL) {
 		fprintf (stderr, "failed to start daemon\n");
 		return 1;
 	}
+	
+	setup_daemon_handler (daemon);
 
+/*	
 	(void) getchar ();
+*/
 
+	while (1) {
+		max = 0;
+		FD_ZERO (&rs);
+		FD_ZERO (&ws);
+		FD_ZERO (&es);
+
+		if (MHD_get_fdset (daemon, &rs, &ws, &es, &max) != MHD_YES) {
+			fprintf (stderr, "! Fatal error: MHD_get_fdset failed\n");
+			break;
+		}
+
+		if (MHD_get_timeout (daemon, &mhd_timeout) == MHD_YES) {
+			tv.tv_sec = mhd_timeout / 1000;
+			tv.tv_usec = (mhd_timeout - (tv.tv_sec * 1000)) * 1000;
+			tvp = &tv;
+		}
+		else
+			tvp = NULL;
+
+		if (select (max + 1, &rs, &ws, &es, tvp) == -1) {
+			if (errno != EINTR) {
+				fprintf (stderr,
+					"! Fatal error: select: %s\n",
+					strerror (errno));
+				break;
+			}
+		}
+
+		MHD_run (daemon);
+	}
+
+	resume_all_connections (daemon);
 	stop_httpd (daemon);
+	clear_daemon_handler ();
 	free_mhd_responses ();
 
 	return 0;
