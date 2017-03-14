@@ -2,8 +2,8 @@
 #include "common.h"
 #include "server.h"
 #include "suspend.h"
-#include <time.h>
 #include <errno.h>
+#include <limits.h>
 
 #ifdef _MSC_VER
 #ifndef strcasecmp
@@ -16,27 +16,10 @@
 #define snprintf _snprintf
 #endif
 
-
-#if defined (__linux__)
-/* GNU/Linux try to use epoll */
-#if MHD_VERSION <= 0x00095000
+/* Default MHD daemon mode */
 #define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY | MHD_USE_SUSPEND_RESUME
-/*
-MHD_USE_EPOLL_INTERNALLY_LINUX_ONLY \
-| MHD_USE_SUSPEND_RESUME
-*/
-#else
-#define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY \
-| MHD_USE_EPOLL_LINUX_ONLY \
-| MHD_USE_SUSPEND_RESUME
-#endif
-#else
-/* Rest OS use select */
-#define DEFAULT_HTTPD_MODE MHD_USE_SELECT_INTERNALLY | MHD_USE_SUSPEND_RESUME
-#endif
 
-
-/* listener port */
+/* Listener port */
 #define DEFAULT_HTTPD_PORT 8888
 /* MHD_OPTION_CONNECTION_TIMEOUT */
 #define DEFAULT_HTTPD_CONNECTION_TIMEOUT 15
@@ -71,6 +54,9 @@ print_usage (const char *argv0);
 	print_usage (program_name);\
 	exit (EXIT_FAILURE);\
 } while (0)
+
+static void
+run_select_poller (struct MHD_Daemon *daemon);
 
 
 /* ------------------------------------------------------------------ */
@@ -173,6 +159,9 @@ print_usage (const char *argv0)
 	snprintf (buffer, 256,
 		"increment to use for growing the read buffer, default %d",
 		DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT);
+#if defined(__linux__)
+	desc ("-E", "enable epoll backend (Linux only)");
+#endif
 	desc ("-I MEMORY_INCEMENT", buffer);
 	snprintf (buffer, 256,
 		"max memory size per connection, default %d",
@@ -186,12 +175,9 @@ print_usage (const char *argv0)
 }
 
 
-extern int
-main (int argc, char *argv[])
+static void
+run_select_poller (struct MHD_Daemon *daemon)
 {
-	struct MHD_Daemon *daemon;
-	httpd_options ops;
-	int opt;
 	struct timeval tv;
 	struct timeval *tvp;
 	fd_set rs;
@@ -201,6 +187,48 @@ main (int argc, char *argv[])
 	MHD_UNSIGNED_LONG_LONG mhd_timeout;
 
 
+	while (1) {
+		max = 0;
+		FD_ZERO (&rs);
+		FD_ZERO (&ws);
+		FD_ZERO (&es);
+
+		if (MHD_get_fdset (daemon, &rs, &ws, &es, &max) != MHD_YES) {
+			fprintf (stderr,
+				"! Fatal error: MHD_get_fdset failed\n");
+			break;
+		}
+
+		if (MHD_get_timeout (daemon, &mhd_timeout) == MHD_YES) {
+			tv.tv_sec = mhd_timeout / 1000;
+			tv.tv_usec = (mhd_timeout - (tv.tv_sec * 1000)) * 1000;
+			tvp = &tv;
+		}
+		else
+			tvp = NULL;
+
+		if (select (max + 1, &rs, &ws, &es, tvp) == -1) {
+			if (errno != EINTR) {
+				fprintf (stderr,
+					"! Fatal error: select: %s\n",
+					strerror (errno));
+				break;
+			}
+		}
+
+		MHD_run (daemon);
+	}
+}
+
+
+extern int
+main (int argc, char *argv[])
+{
+	struct MHD_Daemon *daemon;
+	httpd_options ops;
+	int opt;
+
+
 	ops.mode = DEFAULT_HTTPD_MODE;
 	ops.port = DEFAULT_HTTPD_PORT;
 	ops.connect_timeout = DEFAULT_HTTPD_CONNECTION_TIMEOUT;
@@ -208,7 +236,7 @@ main (int argc, char *argv[])
 	ops.memory_limit = DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT;
 	ops.memory_increment = DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT;
 
-	while ((opt = getopt (argc, argv, "p:t:I:M:T:")) != -1) {
+	while ((opt = getopt (argc, argv, "p:t:EI:M:T:")) != -1) {
 		switch (opt) {
 		case 'p': {
 			int port;
@@ -224,6 +252,15 @@ main (int argc, char *argv[])
 				die ("Invalid timeout: %s.", optarg);
 			ops.connect_timeout = timeout;
 		} break;
+#if defined (__linux__)
+		case 'E':
+#if MHD_VERSION >= 0x00095100
+			ops.mode |= MHD_USE_EPOLL;
+#else
+			ops.mode |= MHD_USE_EPOLL_LINUX_ONLY;
+#endif
+			break;
+#endif
 		case 'I': {
 			int increment;
 			sscanf (optarg, "%d", &increment);
@@ -253,6 +290,8 @@ main (int argc, char *argv[])
 
 	/* initialize MHD default responses */
 	init_mhd_responses ();
+
+	/* we store suspended connection in special pool */
 	init_suspend_pool ();
 	
 	daemon = start_httpd (&ops);
@@ -261,43 +300,25 @@ main (int argc, char *argv[])
 		fprintf (stderr, "failed to start daemon\n");
 		return 1;
 	}
-	
+
+	/* pass MHD_Daemon handle to server.c */
 	setup_daemon_handler (daemon);
 
-/*	
-	(void) getchar ();
-*/
 
-	while (1) {
-		max = 0;
-		FD_ZERO (&rs);
-		FD_ZERO (&ws);
-		FD_ZERO (&es);
-
-		if (MHD_get_fdset (daemon, &rs, &ws, &es, &max) != MHD_YES) {
-			fprintf (stderr, "! Fatal error: MHD_get_fdset failed\n");
-			break;
-		}
-
-		if (MHD_get_timeout (daemon, &mhd_timeout) == MHD_YES) {
-			tv.tv_sec = mhd_timeout / 1000;
-			tv.tv_usec = (mhd_timeout - (tv.tv_sec * 1000)) * 1000;
-			tvp = &tv;
-		}
-		else
-			tvp = NULL;
-
-		if (select (max + 1, &rs, &ws, &es, tvp) == -1) {
-			if (errno != EINTR) {
-				fprintf (stderr,
-					"! Fatal error: select: %s\n",
-					strerror (errno));
-				break;
-			}
-		}
-
-		MHD_run (daemon);
+#if MHD_VERSION >= 0x00095100
+	if (ops.mode & MHD_USE_EPOLL) {
+#else
+	if (ops.mode & MHD_USE_EPOLL_LINUX_ONLY) {
+#endif
+		debug ("* Using epoll backend\n");
+		(void) getchar ();
 	}
+	else {
+		/* we have to run MHD_run() if using select backend */
+		debug ("* Using select backend\n");
+		run_select_poller (daemon);
+	}
+
 
 	resume_all_connections (daemon);
 	stop_httpd (daemon);
