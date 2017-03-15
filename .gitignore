@@ -1,3 +1,4 @@
 *.o
 a.out
 x11mirror-server
+localtest.sh

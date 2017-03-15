@@ -2,7 +2,9 @@
 #include "common.h"
 #include "suspend.h"
 #include "warn.h"
+#include "contexts.h"
 
+#include <stdlib.h>
 #include <limits.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -26,6 +28,9 @@ volatile bool busy = false;
 /* we copy daemon handler because of suspend/resume + MHD_run () */
 static struct MHD_Daemon *daemon;
 
+static unsigned int daemon_mode;
+static unsigned int daemon_timeout;
+
 
 /* From libmicrohttpd manual:
    maximum number of bytes to use for internal buffering (used only for
@@ -34,39 +39,6 @@ static struct MHD_Daemon *daemon;
    performance, use 32k or 64k (i.e. 65536).
 */
 #define POSTBUFFERSIZE (32 * 1024)
-
-
-enum request_type {
-	GET 	= 0,
-	POST	= 1
-};
-
-
-typedef struct _request_info {
-	/* Request type: GET, POST, etc */
-	enum request_type type;
-
-	/* Handle to the POST processing state. */
-	struct MHD_PostProcessor *pp;
-
-	/* File handle where we write uploaded data. */
-	FILE *fh;
-
-	/* Filename to upload */
-	char *filename;
-
-	/* HTTP response body we will return, NULL if not yet known. */
-	struct MHD_Response *response;
-
-	/* HTTP status code we will return, 0 for undecided. */
-	unsigned int status;
-
-	/* Suspend index */
-	size_t suspend_index;
-
-	/* Is this request current uploader */
-	bool uploader;
-} request_info;
 
 
 enum {
@@ -129,7 +101,7 @@ open_file (	const char *filename,
 		unsigned int *status);
 
 static void
-destroy_request_info (request_info *req);
+destroy_request_ctx (request_ctx *req);
 
 
 /* ------------------------------------------------------------------ */
@@ -141,7 +113,6 @@ accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen)
 	struct sockaddr_in *addr_in = (struct sockaddr_in *) addr;
 	(void) cls;
 	(void) addrlen;
-
 
 	/* ???: inet_ntop/WSAAddressToString */
 	debug ("* Connection from %s port %d\n",
@@ -162,7 +133,7 @@ answer_cb (	void *cls,
 		size_t *upload_data_size,
 		void **con_cls)
 {
-	request_info *req = *con_cls;
+	request_ctx *req = *con_cls;
 	(void) cls;
 	(void) url;
 	(void) version;
@@ -194,7 +165,7 @@ answer_cb (	void *cls,
 			if (req->pp == NULL) {
 				warn (	connection,
 					"failed to create post processor");
-				destroy_request_info (req);
+				destroy_request_ctx (req);
 				return MHD_NO;
 			}
 
@@ -209,27 +180,24 @@ answer_cb (	void *cls,
 	}
 
 	if (req->status != 0) {
-		/* something went wrong */
+		/* something went wrong... */
 		if (*upload_data_size == 0) {
 			/* we can send a response only after reading all
 			   headers & data. */
 			return MHD_queue_response
 				(connection, req->status, req->response);
 		}
-
-		/* do nothing and wait... */
-		*upload_data_size = 0;
-
-		return MHD_YES;
+		else {
+			/* do nothing and wait until headers & data */
+			*upload_data_size = 0;
+			return MHD_YES;
+		}
 	}
 
 	if (req->type == POST) {
-		if (! req->uploader) {
-			if (busy)
-				req->suspend_index
-					= suspend_connection (connection);
-			else
-				resume_connection (req->suspend_index, daemon);
+		if (busy && ! req->uploader) {
+			suspend_connection (connection, req);
+			return MHD_YES;
 		}
 
 		if (*upload_data_size > 0) {
@@ -239,8 +207,10 @@ answer_cb (	void *cls,
 				upload_data,
 				*upload_data_size);
 
-			if (req->filename != NULL)
+			if (! req->uploader && req->filename != NULL) {
+				warn (connection, "uploading `%s'", req->filename);
 				busy = req->uploader = true;
+			}
 
 			*upload_data_size = 0;
 
@@ -249,11 +219,6 @@ answer_cb (	void *cls,
 
 		/* upload has been finished */
 		warn (connection, "uploaded `%s'", req->filename);
-
-		if (busy && req->uploader) {
-			busy = req->uploader = false;
-			resume_all_connections (daemon);
-		}
 
 		if (req->fh != NULL) {
 			fclose (req->fh);
@@ -286,7 +251,7 @@ upload_post_chunk (void *con_cls,
               uint64_t off,
               size_t size)
 {
-	request_info *req = con_cls;
+	request_ctx *req = con_cls;
 	(void) kind;
 	(void) content_type;
 	(void) transfer_encoding;
@@ -375,14 +340,9 @@ request_completed_cb (	void *cls,
 	char *ip_addr;
 	in_port_t port;
 #endif
-	request_info *req = *con_cls;
+	request_ctx *req = *con_cls;
 	(void) cls;
 
-
-	if (req != NULL) {
-		destroy_request_info (req);
-		*con_cls = NULL;
-	}
 
 #if defined(_DEBUG)
 	ci = MHD_get_connection_info (
@@ -427,6 +387,49 @@ request_completed_cb (	void *cls,
 	debug ("* Connection %s port %d closed: %s\n",
 		ip_addr, port, tdesc);
 #endif
+
+	if (busy) {
+		busy = false;
+		resume_all_connections (daemon, daemon_mode);
+/*
+		resume_next (daemon, daemon_mode);
+*/
+	}
+
+	if (req != NULL) {
+		destroy_request_ctx (req);
+		*con_cls = NULL;
+	}
+}
+
+
+extern void
+notify_connection_cb (	void *cls,
+			struct MHD_Connection *connection,
+			void **socket_context,
+			enum MHD_ConnectionNotificationCode toe)
+{
+	socket_ctx *sc = *socket_context;
+	(void) cls;
+	(void) connection;
+
+
+	if (toe == MHD_CONNECTION_NOTIFY_STARTED) {
+		if (sc == NULL) {
+			sc = malloc (sizeof (*sc));
+
+			if (sc != NULL) {
+				sc->prev_timeout = daemon_timeout;
+				*socket_context = sc;
+			}
+		}
+	}
+	else {
+		if (sc != NULL) {
+			free (sc);
+			*socket_context = NULL;
+		}
+	}
 }
 
 
@@ -463,8 +466,9 @@ free_mhd_responses (void)
 		MHD_destroy_response (responses[i]);
 }
 
+
 static void
-destroy_request_info (request_info *req)
+destroy_request_ctx (request_ctx *req)
 {
 	if (req->filename != NULL)
 		free (req->filename);
@@ -478,6 +482,7 @@ destroy_request_info (request_info *req)
 	free (req);
 }
 
+
 extern void
 setup_daemon_handler (struct MHD_Daemon *d)
 {
@@ -485,8 +490,17 @@ setup_daemon_handler (struct MHD_Daemon *d)
 		daemon = d;
 }
 
+
 extern void
 clear_daemon_handler (void)
 {
 	daemon = NULL;
+}
+
+
+extern void
+setup_daemon_options (unsigned int mode, unsigned int timeout)
+{
+	daemon_mode = mode;
+	daemon_timeout = timeout;
 }

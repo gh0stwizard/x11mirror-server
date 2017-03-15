@@ -23,6 +23,12 @@ request_completed_cb (	void *cls,
 			enum MHD_RequestTerminationCode toe);
 
 extern void
+notify_connection_cb (	void *cls,
+			struct MHD_Connection *connection,
+			void **socket_context,
+			enum MHD_ConnectionNotificationCode toe);
+
+extern void
 init_mhd_responses (void);
 
 extern void
@@ -33,5 +39,8 @@ setup_daemon_handler (struct MHD_Daemon *d);
 
 extern void
 clear_daemon_handler (void);
+
+extern void
+setup_daemon_options (unsigned int mode, unsigned int timeout);
 
 #endif /* __SERVER_H */

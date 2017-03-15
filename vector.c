@@ -8,7 +8,9 @@
 #include "mutex.h"
 #endif
 
+#include <stdio.h> /* DEBUG */
 #include <stdlib.h>
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 
@@ -59,6 +61,7 @@ vector_new(void)
 		l->count = 0;
 		l->size = VECTOR_INIT_SIZE;
 		l->data = malloc(sizeof(void *) * l->size);
+		l->errnum = 0;
 
 		if (l->data == NULL) {
 			vector_set_errno(l, errno);
@@ -79,20 +82,19 @@ vector_new(void)
 void
 vector_destroy(VECTOR *l)
 {
+	if (l != NULL) {
 #ifndef _NO_THREADS
-	simple_mutex_lock (l->mutex);
+		simple_mutex_lock (l->mutex);
 #endif
 
-	if (l != NULL) {
 		if (l->data != NULL)
 			free(l->data);
-
 		free(l);
-	}
 
 #ifndef _NO_THREADS
-	simple_mutex_unlock (l->mutex);
+		simple_mutex_unlock (l->mutex);
 #endif
+	}
 }
 
 
@@ -100,79 +102,67 @@ bool
 vector_add(VECTOR *l, void *e)
 {
 	void **temp;
-	bool result;
+	size_t new_size;
 
+
+	assert (l != NULL);
+
+	if (l->size < VECTOR_MAX) {
 #ifndef _NO_THREADS
-	simple_mutex_lock (l->mutex);
+		simple_mutex_lock (l->mutex);
 #endif
-
-	if (l == NULL) {
-		vector_set_errno(l, EINVAL);
-		result = false;
-	}
-	else if (l->size >= VECTOR_MAX) {
 		/* if the current allocated size of vector structure
 		 * is exceeding the value below, we throw an error.
 		 */
-		vector_set_errno(l, ERANGE);
-		result = false;
-	}
-	else if (l->size == l->count) {
-		l->size *= VECTOR_RESIZE_FACTOR;
+		if (l->size == l->count) {
+			new_size = l->size * VECTOR_RESIZE_FACTOR;
+			temp = realloc(l->data, sizeof(void *) * new_size);
 
-		temp = realloc(l->data, sizeof(void *) * l->size);
-
-		if (temp != NULL) {
-			l->data = temp;
-			result = true;
+			if (temp != NULL) {
+				l->data = temp;
+				l->size = new_size;
+			}
+			else {
+				vector_set_errno(l, errno);
+				return false;
+			}
 		}
-		else {
-			vector_set_errno(l, errno);
-			result = false;
-		}
-	}
-	else
-		result = true;
 
-	if (result) {
 		l->data[l->count] = e;
 		l->count++;
-	}
 
 #ifndef _NO_THREADS
-	simple_mutex_unlock (l->mutex);
+		simple_mutex_unlock (l->mutex);
 #endif
-
-	return result;
+		return true;
+	}
+	else {
+		/* overflow */
+		vector_set_errno(l, ERANGE);
+		return false;
+	}
 }
 
 
 bool
 vector_get(VECTOR *l, size_t index, void **e)
 {
-	bool result;
+	assert(l != NULL);
 
-#ifndef _NO_THREADS
-	simple_mutex_lock (l->mutex);
-#endif
 
-	if ((l == NULL) || (e == NULL)) {
+	if (e == NULL) {
 		vector_set_errno(l, EINVAL);
-		result = false;
-	}
-	else if (index >= l->count) {
-		vector_set_errno(l, ERANGE);
-		result = false;
-	}
-	else {
-		*e = l->data[index];
-		result = true;
+		return false;
 	}
 
-#ifndef _NO_THREADS
-	simple_mutex_unlock (l->mutex);
-#endif
-	return result;
+	if (index >= l->count) {
+		vector_set_errno(l, ERANGE);
+		return false;
+	}
+
+	*e = l->data[index];
+
+	return true;
 }
 
 
@@ -180,34 +170,37 @@ bool
 vector_shrink(VECTOR *l)
 {
 	void **temp;
-	bool result;
+	size_t new_size;
+
 
 #ifndef _NO_THREADS
 	simple_mutex_lock (l->mutex);
 #endif
 
-	if ((l->size > VECTOR_INIT_SIZE)
-		&& (l->count <= l->size / (VECTOR_RESIZE_FACTOR * 2)))
+	if (	(l->size > VECTOR_INIT_SIZE) &&
+		(l->count <= l->size / (VECTOR_RESIZE_FACTOR * 2)))
 	{
-		l->size /= VECTOR_RESIZE_FACTOR;
+		new_size = l->size / VECTOR_RESIZE_FACTOR;
 		temp = realloc(l->data, sizeof(void *) * l->size);
+
 		if (temp != NULL) {
 			l->data = temp;
-			result = true;
+			l->size = new_size;
 		}
 		else {
+#ifndef _NO_THREADS
+			simple_mutex_unlock (l->mutex);
+#endif
 			vector_set_errno(l, errno);
-			result = false;
+			return false;
 		}
 	}
-	else
-		result = true;
 
 #ifndef _NO_THREADS
 	simple_mutex_unlock (l->mutex);
 #endif
 
-	return result;
+	return true;
 }
 
 
@@ -215,36 +208,31 @@ bool
 vector_delete(VECTOR *l, size_t index, void **e)
 {
 	size_t i, t;
-	bool result;
+
+	
+	assert (l != NULL);
+
+	if (index >= l->count) {
+		vector_set_errno(l, ERANGE);
+		return false;
+	}
+
+	if (e != NULL)
+		*e = l->data[index];
 
 #ifndef _NO_THREADS
 	simple_mutex_lock (l->mutex);
 #endif
+	for (i = index, t = l->count - 1; i < t; i++)
+		l->data[i] = l->data[i + 1];
 
-	if (l == NULL) {
-		vector_set_errno(l, EINVAL);
-		result = false;
-	}
-	else if (index >= l->count) {
-		vector_set_errno(l, ERANGE);
-		result = false;
-	}
-	else {
-		if (e != NULL)
-			*e = l->data[index];
-
-		for (i = index, t = l->count - 1; i < t; i++)
-			l->data[i] = l->data[i + 1];
-
-		l->count--;
-		result = vector_shrink(l);
-	}
+	l->count--;
 
 #ifndef _NO_THREADS
 	simple_mutex_unlock (l->mutex);
 #endif
 
-	return result;
+	return vector_shrink(l);
 }
 
 
@@ -252,6 +240,7 @@ void
 vector_free_contents(VECTOR *l)
 {
 	size_t i, count;
+
 
 #ifndef _NO_THREADS
 	simple_mutex_lock (l->mutex);
@@ -271,6 +260,7 @@ bool
 vector_reset(VECTOR *l)
 {
 	bool result;
+
 
 #ifndef _NO_THREADS
 	simple_mutex_lock (l->mutex);
@@ -305,15 +295,13 @@ vector_set(VECTOR *l, size_t index, void *e, void **old)
 {
 	bool result;
 
+	assert (l != NULL);
+
 #ifndef _NO_THREADS
 	simple_mutex_lock (l->mutex);
 #endif
 
-	if (l == NULL) {
-		vector_set_errno(l, EINVAL);
-		result = false;
-	}
-	else if (index >= l->count) {
+	if (index >= l->count) {
 		vector_set_errno(l, ERANGE);
 		result = false;
 	}
