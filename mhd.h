@@ -17,7 +17,8 @@
 #include <winsock2.h>
 #else
 #ifndef _XOPEN_SOURCE
-#define _XOPEN_SOURCE 500 /* strdup */
+/* strdup */
+#define _XOPEN_SOURCE 500
 #endif
 #include <sys/select.h>
 #include <sys/socket.h>

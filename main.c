@@ -105,7 +105,7 @@ start_httpd (httpd_options *ops)
 			(intptr_t) &notify_connection_cb,
 			NULL
 		},
-		{ 	MHD_OPTION_END, 0, NULL } /* must be always be last */
+		{ 	MHD_OPTION_END, 0, NULL } /* must always be the last */
 	};
 
 	daemon_options[CONNECTION_TIMEOUT].value = ops->connect_timeout;
@@ -122,6 +122,15 @@ start_httpd (httpd_options *ops)
 	debug ("* Memory limit per connection: %u\n", ops->memory_limit);
 	debug ("* Memory increment per connection: %u\n", ops->memory_increment);
 
+#if MHD_VERSION >= 0x00095100
+	if (ops->mode & MHD_USE_EPOLL)
+#else
+	if (ops->mode & MHD_USE_EPOLL_LINUX_ONLY)
+#endif
+		debug ("* Poller backend: epoll\n");
+	else
+		debug ("* Poller backend: select\n");
+
 	daemon = MHD_start_daemon (
 		ops->mode,
 		ops->port,
@@ -137,7 +146,7 @@ start_httpd (httpd_options *ops)
 static void
 stop_httpd (struct MHD_Daemon *daemon)
 {
-	debug ("* Shutdown daemon.\n");
+	debug ("* Shutting down the daemon.\n");
 
 	if (daemon != NULL)
 		MHD_stop_daemon (daemon);
@@ -149,33 +158,36 @@ print_usage (const char *argv0)
 {
 	char buffer[256];
 
+
 	fprintf (stderr, "Usage: %s [-p PORT] [OPTIONS]\n", argv0);
 	fprintf (stderr, "Options:\n");
 #define desc(o,d) fprintf (stderr, "  %-24s  %s\n", o, d);
+	/* listener port */
 	snprintf (buffer, 256,
 		"a port number to listen, default %d", DEFAULT_HTTPD_PORT);
 	desc ("-p PORT", buffer);
-
+	/* connection timeout */
 	snprintf (buffer, 256,
 		"a connection timeout in seconds, default %d sec.",
 		DEFAULT_HTTPD_CONNECTION_TIMEOUT);
 	desc ("-t CONNECTION_TIMEOUT", buffer);
-
+	/* memory increment */
 	snprintf (buffer, 256,
 		"increment to use for growing the read buffer, default %d",
 		DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT);
 	desc ("-I MEMORY_INCREMENT", buffer);
-
+	/* debug switch */
 	desc ("-D", "enable MHD debug, disabled by default")
-
+	/* epoll switch */
 #if defined(__linux__)
 	desc ("-E", "enable epoll backend (Linux only)");
 #endif
+	/* memory limit */
 	snprintf (buffer, 256,
 		"max memory size per connection, default %d",
 		DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT);
 	desc ("-M MEMORY_LIMIT", buffer);
-
+	/* an amount of threads */
 	snprintf (buffer, 256,
 		"an amount of threads, default %d",
 		DEFAULT_HTTPD_THREAD_POOL_SIZE);
@@ -271,20 +283,7 @@ main (int argc, char *argv[])
 	setup_daemon_handler (daemon);
 	setup_daemon_options (ops.mode, ops.connect_timeout);
 
-#if MHD_VERSION >= 0x00095100
-	if (ops.mode & MHD_USE_EPOLL) {
-#else
-	if (ops.mode & MHD_USE_EPOLL_LINUX_ONLY) {
-#endif
-		debug ("* Using epoll backend\n");
-		(void) getchar ();
-	}
-	else {
-		/* we have to run MHD_run() if using select backend */
-		debug ("* Using select backend\n");
-		(void) getchar ();
-	}
-
+	(void) getchar ();
 
 	resume_all_connections (daemon, ops.mode);
 	stop_httpd (daemon);

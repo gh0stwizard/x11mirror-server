@@ -25,15 +25,13 @@ warn (struct MHD_Connection *connection, const char *fmt, ...)
 	else
 		ip = "<unknown>";
 
-
 	va_start (args, fmt);
 
-	if (get_current_time_string (&datep, sizeof(date))) {
+	if (get_current_time_string (&datep, sizeof(date)))
 		fprintf (stderr, "%s ! %s port %u: ", date, ip, port);
-	}
-	else {
+	else
 		fprintf (stderr, "! %s port %u: ", ip, port);
-	}
+
 	vfprintf (stderr, fmt, args);
 	fprintf (stderr, "\n");
 	va_end (args);

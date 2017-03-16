@@ -1,11 +1,15 @@
 #include <stdio.h>
 #include <string.h>
+#ifndef _POSIX_C_SOURCE
+/* clock_gettime */
 #define _POSIX_C_SOURCE 199309L
+#endif
 #include <time.h>
 #include <errno.h>
 #include "timeinfo.h"
 
 
+/* a precision of floating part of seconds */
 #define USEC_SIZE 6
 
 
