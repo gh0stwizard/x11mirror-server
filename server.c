@@ -61,27 +61,27 @@ static const char * pages[PAGE_MAX];
 #define _DEFAULT "<html>" _HEAD_TITLE \
 "<body>"\
 "<h1>Hello!</h1>"\
-"</body></html>"
+"</body></html>\r\n"
 
 #define _COMPLETED "<html>" _HEAD_TITLE \
 "<body>"\
 "<h1>Upload completed.</h1>"\
-"</body></html>"
+"</body></html>\r\n"
 
 #define _EXISTS "<html>" _HEAD_TITLE \
 "<body>"\
 "<h1>File exists.</h1>"\
-"</body></html>"
+"</body></html>\r\n"
 
 #define _IO_ERROR "<html>" _HEAD_TITLE \
 "<body>"\
 "<h1>Internal server error: I/O error.</h1>"\
-"</body></html>"
+"</body></html>\r\n"
 
 #define _BAD_REQUEST "<html>" _HEAD_TITLE \
 "<body>"\
 "<h1>Bad request.</h1>"\
-"</body></html>"
+"</body></html>\r\n"
 
 
 static int
