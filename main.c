@@ -113,7 +113,9 @@ start_httpd (httpd_options *ops)
 	daemon_options[MEMORY_LIMIT].value = ops->memory_limit;
 	daemon_options[MEMORY_INCREMENT].value = ops->memory_increment;
 
-	debug ("* Powered by libmicrohttpd version %s\n", MHD_get_version ());
+	debug ("* Powered by libmicrohttpd version %s (0x%08x)\n",
+		MHD_get_version (),
+		MHD_VERSION);
 	debug ("* Start listener on port %d\n", ops->port);
 	debug ("* Connection timeout: %d\n", ops->connect_timeout);
 	debug ("* Thread pool size: %d\n", ops->thread_pool_size);
