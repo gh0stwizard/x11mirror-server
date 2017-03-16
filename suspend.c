@@ -13,8 +13,10 @@
 static VECTOR *pool;
 
 
+#if MHD_VERSION < 0x00095213
 static void
 run_daemon (struct MHD_Daemon *daemon, unsigned int mode);
+#endif
 
 static void
 update_current_connection_timeout (struct MHD_Connection *connection);
@@ -26,6 +28,7 @@ get_prev_connection_timeout (struct MHD_Connection *connection);
 /* ------------------------------------------------------------------ */
 
 
+#if MHD_VERSION < 0x00095213
 static void
 run_daemon (struct MHD_Daemon *daemon, unsigned int mode)
 {
@@ -33,7 +36,6 @@ run_daemon (struct MHD_Daemon *daemon, unsigned int mode)
 	MHD_socket max = 0;
 	fd_set rs, ws, es;
 
-	debug ("! run_daemon\n");
 
 	FD_ZERO (&rs);
 	FD_ZERO (&ws);
@@ -44,21 +46,31 @@ run_daemon (struct MHD_Daemon *daemon, unsigned int mode)
 #else
 	if (mode & MHD_USE_EPOLL_LINUX_ONLY) {
 #endif
+		/* XXX: fixed in git master branch already */
+		debug ("! run_daemon: MHD_run\n");
 		MHD_run (daemon);
 		return;
 	}
 
-	if (MHD_get_fdset (daemon, &rs, &ws, &es, &max) != MHD_YES)
-		die ("! Fatal error: MHD_get_fdset failed: %s\n",
+	if (MHD_get_fdset (daemon, &rs, &ws, &es, &max) != MHD_YES) {
+		/* XXX: thread-safe die() */
+		debug ("! FATAL ERROR: MHD_get_fdset: %s\n",
 			strerror (errno));
+	}
 
 	if (select (max + 1, &rs, &ws, &es, &tv) == -1) {
-		if (errno != EINTR)
-			die ("! Fatal error: select: %s\n", strerror (errno));
+		if (errno != EINTR) {
+			/* XXX: thread-safe die() */
+			debug ("! FATAL ERROR: select: %s\n",
+				strerror (errno));
+		}
 	}
+
+	debug ("! run_daemon: MHD_run_from_select\n");
 
 	MHD_run_from_select (daemon, &rs, &ws, &es);
 }
+#endif
 
 
 extern void
@@ -104,12 +116,14 @@ resume_all_connections (struct MHD_Daemon *daemon, unsigned int mode)
 				get_prev_connection_timeout (connection));
 		}
 		else
-			die ("failed to get connection entry");
+			/* XXX: thread-safe die() */
+			debug ("! FATAL ERROR: get connection entry");
 	}
 
 	if (vector_count (pool) == total) {
 		if (! vector_reset (pool))
-			die ("failed to purge pool");
+			/* XXX: thread-safe die() */
+			debug ("! FATAL ERROR: reset pool");
 	}
 
 #if MHD_VERSION < 0x00095213
@@ -117,28 +131,6 @@ resume_all_connections (struct MHD_Daemon *daemon, unsigned int mode)
 #endif
 }
 
-
-extern void
-resume_connection_index (size_t index, struct MHD_Daemon *daemon, unsigned int mode)
-{
-	static void *entry;
-	static struct MHD_Connection *connection;
-#if MHD_VERSION >= 0x00095213
-	(void) daemon;
-	(void) mode;
-#endif
-
-	if (vector_delete (pool, index, &entry)) {
-		connection = (struct MHD_Connection *) entry;
-#if defined(_DEBUG)
-		warn (connection, "resume");
-#endif
-		MHD_resume_connection (connection);
-#if MHD_VERSION < 0x00095213
-		run_daemon (daemon, mode);
-#endif
-	}
-}
 
 extern void
 resume_next (struct MHD_Daemon *daemon, unsigned int mode)
@@ -159,7 +151,8 @@ resume_next (struct MHD_Daemon *daemon, unsigned int mode)
 	debug ("* Resuming next connection...\n");
 
 	if (! vector_delete (pool, 0, &entry)) {
-		debug ("! Fatal error: vector_delete: %s\n",
+		/* XXX: thread-safe die() */
+		debug ("! FATAL ERROR: vector_delete: %s\n",
 			strerror (vector_get_errno (pool)));
 		return;
 	}
@@ -175,7 +168,7 @@ resume_next (struct MHD_Daemon *daemon, unsigned int mode)
 			get_prev_connection_timeout (connection));
 	}
 	else
-		debug ("! Failed to get connection entry\n");
+		debug ("! ERROR: Failed to get connection entry\n");
 
 #if MHD_VERSION < 0x00095213
 	run_daemon (daemon, mode);
@@ -183,34 +176,9 @@ resume_next (struct MHD_Daemon *daemon, unsigned int mode)
 }
 
 
-extern size_t
-suspend_connection_old (struct MHD_Connection *connection)
-{
-	size_t index;
-
-	MHD_suspend_connection (connection);
-
-	if (! vector_add (pool, (void *) connection))
-		die ("failed to add connection to pool (%d)",
-			vector_get_errno (pool));
-
-	index = vector_count (pool) - 1;
-
-#if defined(_DEBUG)
-	warn (connection, "suspend");
-#endif
-
-	return index;
-}
-
-
 extern void
 suspend_connection (struct MHD_Connection *connection, request_ctx *req)
 {
-/*
-	void *timeout;
-*/
-
 	update_current_connection_timeout (connection);
 
 	MHD_set_connection_option (
@@ -218,20 +186,12 @@ suspend_connection (struct MHD_Connection *connection, request_ctx *req)
 		MHD_CONNECTION_OPTION_TIMEOUT,
 		0);
 
-/*
-	MHD_get_connection_option (
-		connection,
-		MHD_CONNECTION_OPTION_TIMEOUT,
-		&timeout);
-
-	warn (connection, "new timeout: %u", timeout);
-*/
-
 	MHD_suspend_connection (connection);
 
 	if (! vector_add (pool, (void *) connection))
-		die ("failed to add connection to pool (%d)",
-			vector_get_errno (pool));
+		/* XXX: thread-safe die() */
+		debug ("! FATAL ERROR: add connection to pool: %s\n",
+			strerror (vector_get_errno (pool)));
 
 	req->suspend_index = vector_count (pool) - 1;
 
@@ -258,14 +218,10 @@ update_current_connection_timeout (struct MHD_Connection *connection)
 	if ((ci_ctx != NULL) && (ci_timeout != NULL)) {
 		sc = *(socket_ctx **) ci_ctx;
 		timeout = *(unsigned int *) ci_timeout;
-/*
-		warn (connection, "timeout: current = %u, prev. = %u",
-			timeout, sc->prev_timeout);
-*/
 		sc->prev_timeout = timeout;
 	}
 	else
-		warn (connection, "failed to update current connection timeout");
+		warn (connection, "ERROR: update current connection timeout");
 }
 
 
@@ -284,7 +240,7 @@ get_prev_connection_timeout (struct MHD_Connection *connection)
 		return sc->prev_timeout;
 	}
 
-	warn (connection, "failed to get prev. connection timeout");
+	warn (connection, "ERROR: get prev. connection timeout");
 
 	return 0; /* must be 0 */
 }

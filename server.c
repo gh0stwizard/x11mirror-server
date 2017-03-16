@@ -155,6 +155,7 @@ answer_cb (	void *cls,
 		req->suspend_index = UINT_MAX;
 		req->uploader = false;
 
+		/* initialize post processor */
 		if (0 == strcasecmp (method, MHD_HTTP_METHOD_POST)) {
 			req->pp = MHD_create_post_processor (
 					connection,
@@ -190,6 +191,7 @@ answer_cb (	void *cls,
 		else {
 			/* do nothing and wait until headers & data */
 			*upload_data_size = 0;
+
 			return MHD_YES;
 		}
 	}
@@ -280,6 +282,7 @@ upload_post_chunk (void *con_cls,
 		else {
 			req->response = response;
 			req->status = status;
+
 			return MHD_YES;
 		}
 	}
@@ -307,10 +310,11 @@ open_file (	const char *filename,
 	fh = fopen (filename, "rb");
 
 	if (fh == NULL) {
+		/* try to create a new file */
 		fh = fopen (filename, "ab");
 
 		if (fh == NULL) {
-			fprintf (stderr, "failed to open %s: %s\n",
+			fprintf (stderr, "failed to open `%s': %s\n",
 				filename,
 				strerror (errno));
 			*response = responses[PAGE_IO_ERROR];
@@ -318,6 +322,7 @@ open_file (	const char *filename,
 		}
 	}
 	else {
+		/* file exists */
 		fclose (fh);
 		fh = NULL;
 		*response = responses[PAGE_FILE_EXISTS];
@@ -425,6 +430,7 @@ notify_connection_cb (	void *cls,
 		}
 	}
 	else {
+		/* client disconnected */
 		if (sc != NULL) {
 			free (sc);
 			*socket_context = NULL;
@@ -449,7 +455,7 @@ init_mhd_responses (void)
 				MHD_RESPMEM_PERSISTENT);
 
 		if (responses[i] == NULL)
-			die ("failed to create page #%d", i);
+			die ("failed to create response #%d", i);
 
 		MHD_add_response_header (
 			responses[i],
