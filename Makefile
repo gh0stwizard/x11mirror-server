@@ -1,7 +1,8 @@
 CFLAGS_MHD = $(shell pkgconf --cflags libmicrohttpd)
 LIBS_MHD = $(shell pkgconf --libs libmicrohttpd)
 LIBS ?= 
-CFLAGS ?= -Wall -Wextra -std=c99 -pedantic -D_DEBUG -g
+CFLAGS ?= -Wall -Wextra -std=c99 -pedantic
+CFLAGS += -D_DEBUG -g
 LDFLAGS ?= -Wl,--allow-multiple-definition
 BUILD_DIR ?= .
 SOURCES = $(wildcard *.c)

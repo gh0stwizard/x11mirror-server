@@ -388,12 +388,12 @@ request_completed_cb (	void *cls,
 		ip_addr, port, tdesc);
 #endif
 
-	if (busy) {
+	if (busy && req->uploader) {
 		busy = false;
-		resume_all_connections (daemon, daemon_mode);
 /*
-		resume_next (daemon, daemon_mode);
+		resume_all_connections (daemon, daemon_mode);
 */
+		resume_next (daemon, daemon_mode);
 	}
 
 	if (req != NULL) {

@@ -1,4 +1,5 @@
 #include "warn.h"
+#include "timeinfo.h"
 
 
 extern void
@@ -8,6 +9,8 @@ warn (struct MHD_Connection *connection, const char *fmt, ...)
 	const union MHD_ConnectionInfo *ci;
 	char *ip;
 	in_port_t port = 0;
+	char date[DATE_SIZE];
+	char *datep = date;
 
 
 	ci = MHD_get_connection_info (
@@ -22,8 +25,15 @@ warn (struct MHD_Connection *connection, const char *fmt, ...)
 	else
 		ip = "<unknown>";
 
+
 	va_start (args, fmt);
-	fprintf (stderr, "! %s port %u: ", ip, port);
+
+	if (get_current_time_string (&datep, sizeof(date))) {
+		fprintf (stderr, "%s ! %s port %u: ", date, ip, port);
+	}
+	else {
+		fprintf (stderr, "! %s port %u: ", ip, port);
+	}
 	vfprintf (stderr, fmt, args);
 	fprintf (stderr, "\n");
 	va_end (args);

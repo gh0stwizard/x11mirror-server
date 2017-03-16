@@ -155,22 +155,27 @@ print_usage (const char *argv0)
 	snprintf (buffer, 256,
 		"a port number to listen, default %d", DEFAULT_HTTPD_PORT);
 	desc ("-p PORT", buffer);
+
 	snprintf (buffer, 256,
 		"a connection timeout in seconds, default %d sec.",
 		DEFAULT_HTTPD_CONNECTION_TIMEOUT);
 	desc ("-t CONNECTION_TIMEOUT", buffer);
+
 	snprintf (buffer, 256,
 		"increment to use for growing the read buffer, default %d",
 		DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT);
-	desc ("-D", "enable MHD debug, disabled by default");
+	desc ("-I MEMORY_INCREMENT", buffer);
+
+	desc ("-D", "enable MHD debug, disabled by default")
+
 #if defined(__linux__)
 	desc ("-E", "enable epoll backend (Linux only)");
 #endif
-	desc ("-I MEMORY_INCEMENT", buffer);
 	snprintf (buffer, 256,
 		"max memory size per connection, default %d",
 		DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT);
 	desc ("-M MEMORY_LIMIT", buffer);
+
 	snprintf (buffer, 256,
 		"an amount of threads, default %d",
 		DEFAULT_HTTPD_THREAD_POOL_SIZE);
