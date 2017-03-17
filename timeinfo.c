@@ -10,7 +10,8 @@
 
 
 /* a precision of floating part of seconds */
-#define USEC_SIZE 6
+#define USEC_SIZE 4
+#define NSEC_SIZE 9
 
 
 extern int
@@ -21,6 +22,7 @@ get_current_time_string (char *out[], size_t out_len)
 	size_t len, i;
 	char usec[USEC_SIZE + 1];
 	char *usecp;
+	char nsec[NSEC_SIZE + 1];
 
 
 	if (clock_gettime (CLOCK_REALTIME, &tp) == -1) {
@@ -43,16 +45,19 @@ get_current_time_string (char *out[], size_t out_len)
 		return 0;
 	}
 
-	snprintf (usec, USEC_SIZE + 1, "%li", tp.tv_nsec);
 	/* prepend zeros */
-	len = strlen (usec);
-	memmove (usec + (USEC_SIZE - len), usec, len);
-	for (i = 0, usecp = usec; i < USEC_SIZE - len; i++, usecp++)
+	snprintf (nsec, NSEC_SIZE + 1, "%li", tp.tv_nsec);
+	len = strlen (nsec);
+	memmove (nsec + NSEC_SIZE - len, nsec, len);
+	for (i = 0, usecp = nsec; i < NSEC_SIZE - len; i++, usecp++)
 		*usecp = '0';
-	usec[USEC_SIZE] = '\0';
-
+	nsec[NSEC_SIZE] = '\0';
+	
+	/* cut */
+	snprintf (usec, USEC_SIZE + 1, "%s", nsec);
+	
 	len = strlen (*out);
-	snprintf (*out + len, DATE_SIZE - len, ".%s", usec);
+	snprintf (*out + len, DATE_SIZE - len, ".%s (%li)", usec, tp.tv_nsec);
 
 	return len;
 }
