@@ -4,6 +4,7 @@
 #include "warn.h"
 #include "contexts.h"
 #include "responses.h"
+#include "mhd_utils.h"
 
 #include <stdlib.h>
 #include <limits.h>
@@ -28,13 +29,6 @@ char *XMS_STORAGE_DIR = NULL;
 
 /* allow only one uploader per a moment */
 volatile bool busy = false;
-
-/* we copy daemon handler because of suspend/resume + MHD_run () */
-static struct MHD_Daemon *daemon;
-
-static unsigned int daemon_mode;
-static unsigned int daemon_timeout;
-
 
 /* From libmicrohttpd manual:
    maximum number of bytes to use for internal buffering (used only for
@@ -221,7 +215,7 @@ answer_cb (	void *cls,
 		 */
 		if (busy) {
 			busy = false;
-			resume_next (daemon, daemon_mode);
+			resume_next ();
 		}
 
 		return MHD_queue_response
@@ -396,37 +390,6 @@ request_completed_cb (	void *cls,
 }
 
 
-extern void
-notify_connection_cb (	void *cls,
-			struct MHD_Connection *connection,
-			void **socket_context,
-			enum MHD_ConnectionNotificationCode toe)
-{
-	socket_ctx *sc = *socket_context;
-	(void) cls;
-	(void) connection;
-
-
-	if (toe == MHD_CONNECTION_NOTIFY_STARTED) {
-		if (sc == NULL) {
-			sc = malloc (sizeof (*sc));
-
-			if (sc != NULL) {
-				sc->prev_timeout = daemon_timeout;
-				*socket_context = sc;
-			}
-		}
-	}
-	else {
-		/* client disconnected */
-		if (sc != NULL) {
-			free (sc);
-			*socket_context = NULL;
-		}
-	}
-}
-
-
 static void
 destroy_request_ctx (request_ctx *req)
 {
@@ -440,27 +403,4 @@ destroy_request_ctx (request_ctx *req)
 		fclose (req->fh);
 
 	free (req);
-}
-
-
-extern void
-setup_daemon_handler (struct MHD_Daemon *d)
-{
-	if (d != NULL)
-		daemon = d;
-}
-
-
-extern void
-clear_daemon_handler (void)
-{
-	daemon = NULL;
-}
-
-
-extern void
-setup_daemon_options (unsigned int mode, unsigned int timeout)
-{
-	daemon_mode = mode;
-	daemon_timeout = timeout;
 }

@@ -10,7 +10,6 @@ enum request_type {
 	POST	= 1
 };
 
-
 typedef struct _request_ctx {
 	/* Request type: GET, POST, etc */
 	enum request_type type;
@@ -36,12 +35,5 @@ typedef struct _request_ctx {
 	/* Is this request current uploader */
 	bool uploader;
 } request_ctx;
-
-
-typedef struct _socket_ctx {
-	/* previous connection timeout value */
-	unsigned int prev_timeout;
-} socket_ctx;
-
 
 #endif /* _CONTEXTS_H */

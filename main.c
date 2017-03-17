@@ -101,12 +101,6 @@ start_httpd (httpd_options *ops)
 			DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT,
 			NULL
 		},
-		{
-			/* MHD_NotifyConnectionCallback */
-			MHD_OPTION_NOTIFY_CONNECTION,
-			(intptr_t) &notify_connection_cb,
-			NULL
-		},
 		{ 	MHD_OPTION_END, 0, NULL } /* must always be the last */
 	};
 
@@ -305,16 +299,12 @@ main (int argc, char *argv[])
 		return 1;
 	}
 
-	/* pass MHD_Daemon handle to server.c */
-	setup_daemon_handler (daemon);
-	setup_daemon_options (ops.mode, ops.connect_timeout);
-
 	(void) getchar ();
 
-	resume_all_connections (daemon, ops.mode);
+	resume_all_connections ();
 	stop_httpd (daemon);
-	clear_daemon_handler ();
 	free_mhd_responses ();
+	free_suspend_pool ();
 
 	return 0;
 }
