@@ -24,7 +24,7 @@ get_daemon_flags (struct MHD_Connection *connection)
 
 	return -1;
 }
-#endif
+
 
 extern unsigned int
 get_connection_timeout (struct MHD_Connection *connection)
@@ -42,3 +42,5 @@ get_connection_timeout (struct MHD_Connection *connection)
 
 	return 0;
 }
+
+#endif /* #if 0 */
