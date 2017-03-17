@@ -29,12 +29,6 @@ notify_connection_cb (	void *cls,
 			enum MHD_ConnectionNotificationCode toe);
 
 extern void
-init_mhd_responses (void);
-
-extern void
-free_mhd_responses (void);
-
-extern void
 setup_daemon_handler (struct MHD_Daemon *d);
 
 extern void

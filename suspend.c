@@ -148,11 +148,10 @@ resume_next (struct MHD_Daemon *daemon, unsigned int mode)
 	if (total == 0)
 		return;
 
-	debug ("* Resuming next connection...\n");
-
 	if (! vector_delete (pool, 0, &entry)) {
 		/* XXX: thread-safe die() */
-		debug ("! FATAL ERROR: vector_delete: %s\n",
+		debug ("! FATAL ERROR: resume next connection: "
+			"vector_delete: %s\n",
 			strerror (vector_get_errno (pool)));
 		return;
 	}
@@ -168,7 +167,7 @@ resume_next (struct MHD_Daemon *daemon, unsigned int mode)
 			get_prev_connection_timeout (connection));
 	}
 	else
-		debug ("! ERROR: Failed to get connection entry\n");
+		debug ("! ERROR: resume next connection: invalid entry\n");
 
 #if MHD_VERSION < 0x00095213
 	run_daemon (daemon, mode);

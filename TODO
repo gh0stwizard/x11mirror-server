@@ -1,1 +1,1 @@
-* fix die() in MHD threads
+* fix die() in MHD threads (suspend.c)

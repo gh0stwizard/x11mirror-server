@@ -2,6 +2,7 @@
 #include "common.h"
 #include "server.h"
 #include "suspend.h"
+#include "responses.h"
 #include <errno.h>
 #include <limits.h>
 
@@ -101,6 +102,7 @@ start_httpd (httpd_options *ops)
 			NULL
 		},
 		{
+			/* MHD_NotifyConnectionCallback */
 			MHD_OPTION_NOTIFY_CONNECTION,
 			(intptr_t) &notify_connection_cb,
 			NULL
@@ -131,6 +133,12 @@ start_httpd (httpd_options *ops)
 	else
 		debug ("* Poller backend: select\n");
 
+	if (ops->mode & MHD_USE_TCP_FASTOPEN)
+		debug ("* TCP Fast Open: enabled\n");
+	else
+		debug ("* TCP Fast Open: disabled\n");
+
+
 	daemon = MHD_start_daemon (
 		ops->mode,
 		ops->port,
@@ -156,23 +164,25 @@ stop_httpd (struct MHD_Daemon *daemon)
 static void
 print_usage (const char *argv0)
 {
-	char buffer[256];
+#define BUFFER_SIZE 64
+	char buffer[BUFFER_SIZE];
 
 
 	fprintf (stderr, "Usage: %s [-p PORT] [OPTIONS]\n", argv0);
 	fprintf (stderr, "Options:\n");
 #define desc(o,d) fprintf (stderr, "  %-24s  %s\n", o, d);
 	/* listener port */
-	snprintf (buffer, 256,
-		"a port number to listen, default %d", DEFAULT_HTTPD_PORT);
+	snprintf (buffer, BUFFER_SIZE,
+		"a port number to listen, default %d",
+		DEFAULT_HTTPD_PORT);
 	desc ("-p PORT", buffer);
 	/* connection timeout */
-	snprintf (buffer, 256,
+	snprintf (buffer, BUFFER_SIZE,
 		"a connection timeout in seconds, default %d sec.",
 		DEFAULT_HTTPD_CONNECTION_TIMEOUT);
 	desc ("-t CONNECTION_TIMEOUT", buffer);
 	/* memory increment */
-	snprintf (buffer, 256,
+	snprintf (buffer, BUFFER_SIZE,
 		"increment to use for growing the read buffer, default %d",
 		DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT);
 	desc ("-I MEMORY_INCREMENT", buffer);
@@ -181,18 +191,21 @@ print_usage (const char *argv0)
 	/* epoll switch */
 #if defined(__linux__)
 	desc ("-E", "enable epoll backend (Linux only)");
+	/* TCP Fast Open switch */
+	desc ("-F", "enable TCP Fast Open support (Linux only)");
 #endif
 	/* memory limit */
-	snprintf (buffer, 256,
+	snprintf (buffer, BUFFER_SIZE,
 		"max memory size per connection, default %d",
 		DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT);
 	desc ("-M MEMORY_LIMIT", buffer);
 	/* an amount of threads */
-	snprintf (buffer, 256,
+	snprintf (buffer, BUFFER_SIZE,
 		"an amount of threads, default %d",
 		DEFAULT_HTTPD_THREAD_POOL_SIZE);
 	desc ("-T THREADS_NUM", buffer);
 #undef desc
+#undef BUFFER_SIZE
 }
 
 
@@ -211,7 +224,7 @@ main (int argc, char *argv[])
 	ops.memory_limit = DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT;
 	ops.memory_increment = DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT;
 
-	while ((opt = getopt (argc, argv, "p:t:DEI:M:T:")) != -1) {
+	while ((opt = getopt (argc, argv, "p:t:DEFI:M:T:")) != -1) {
 		switch (opt) {
 		case 'p': {
 			int port;
@@ -237,6 +250,9 @@ main (int argc, char *argv[])
 #else
 			ops.mode |= MHD_USE_EPOLL_LINUX_ONLY;
 #endif
+			break;
+		case 'F':
+			ops.mode |= MHD_USE_TCP_FASTOPEN;
 			break;
 #endif
 		case 'I': {

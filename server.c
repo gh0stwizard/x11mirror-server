@@ -3,6 +3,7 @@
 #include "suspend.h"
 #include "warn.h"
 #include "contexts.h"
+#include "responses.h"
 
 #include <stdlib.h>
 #include <limits.h>
@@ -41,49 +42,6 @@ static unsigned int daemon_timeout;
 #define POSTBUFFERSIZE (32 * 1024)
 
 
-enum {
-	PAGE_DEFAULT = 0,
-	PAGE_COMPLETED,
-	PAGE_BAD_REQUEST,
-	PAGE_FILE_EXISTS,
-	PAGE_IO_ERROR,
-	PAGE_MAX
-};
-
-static struct MHD_Response *responses[PAGE_MAX];
-static const char * pages[PAGE_MAX];
-
-
-#define DEFAULT_CONTENT_TYPE "text/html; charset=iso-8859-1"
-
-#define _HEAD_TITLE "<head><title>x11mirror-server</title></head>"
-
-#define _DEFAULT "<html>" _HEAD_TITLE \
-"<body>"\
-"<h1>Hello!</h1>"\
-"</body></html>\r\n"
-
-#define _COMPLETED "<html>" _HEAD_TITLE \
-"<body>"\
-"<h1>Upload completed.</h1>"\
-"</body></html>\r\n"
-
-#define _EXISTS "<html>" _HEAD_TITLE \
-"<body>"\
-"<h1>File exists.</h1>"\
-"</body></html>\r\n"
-
-#define _IO_ERROR "<html>" _HEAD_TITLE \
-"<body>"\
-"<h1>Internal server error: I/O error.</h1>"\
-"</body></html>\r\n"
-
-#define _BAD_REQUEST "<html>" _HEAD_TITLE \
-"<body>"\
-"<h1>Bad request.</h1>"\
-"</body></html>\r\n"
-
-
 static int
 upload_post_chunk (	void *coninfo_cls,
 			enum MHD_ValueKind kind,
@@ -110,6 +68,7 @@ destroy_request_ctx (request_ctx *req);
 extern int
 accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen)
 {
+#if defined(_DEBUG)
 	struct sockaddr_in *addr_in = (struct sockaddr_in *) addr;
 	(void) cls;
 	(void) addrlen;
@@ -118,6 +77,11 @@ accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen)
 	debug ("* Connection from %s port %d\n",
 		inet_ntoa (addr_in->sin_addr),
 		addr_in->sin_port);
+#else
+	(void) cls;
+	(void) addr;
+	(void) addrlen;
+#endif
 
 	return MHD_YES;
 }
@@ -209,8 +173,10 @@ answer_cb (	void *cls,
 				upload_data,
 				*upload_data_size);
 
-			if (! req->uploader && req->filename != NULL) {
-				warn (connection, "uploading `%s'", req->filename);
+			if (! req->uploader && req->fh != NULL) {
+				/* seems to be everything is good */
+				warn (	connection, "uploading `%s'",
+					req->filename);
 				busy = req->uploader = true;
 			}
 
@@ -219,17 +185,31 @@ answer_cb (	void *cls,
 			return MHD_YES;
 		}
 
-		/* upload has been finished */
-		warn (connection, "uploaded `%s'", req->filename);
-
 		if (req->fh != NULL) {
+			/* close the file ASAP */
 			fclose (req->fh);
 			req->fh = NULL;
 		}
 
 		if (req->status == 0) {
-			req->response = responses[PAGE_COMPLETED];
+			/* upload successfully finished */
+			warn (connection, "uploaded `%s'", req->filename);
+			req->response = XMS_RESPONSES[XMS_PAGE_COMPLETED];
 			req->status = MHD_HTTP_OK;
+			char path[PATH_MAX];
+			snprintf (path, PATH_MAX - 1, "/run/tmp/%s", req->filename);
+			remove (path);
+		}
+
+		/* job is done:
+		 * process a new request ASAP, e.g. before conn. closing
+		 */
+		if (busy && req->uploader) {
+			busy = false;
+/*
+			resume_all_connections (daemon, daemon_mode);
+*/
+			resume_next (daemon, daemon_mode);
 		}
 
 		return MHD_queue_response
@@ -238,7 +218,7 @@ answer_cb (	void *cls,
 
 	/* GET */
 	return MHD_queue_response
-		(connection, MHD_HTTP_OK, responses[PAGE_DEFAULT]);
+		(connection, MHD_HTTP_OK, XMS_RESPONSES[XMS_PAGE_DEFAULT]);
 }
 
 
@@ -265,7 +245,7 @@ upload_post_chunk (void *con_cls,
 		|| (strlen (filename) >= 256)
 		|| (strncmp (key, "file", 5) != 0))
 	{
-		req->response = responses[PAGE_BAD_REQUEST];
+		req->response = XMS_RESPONSES[XMS_PAGE_BAD_REQUEST];
 		req->status = MHD_HTTP_BAD_REQUEST;
 		return MHD_YES;
 	}
@@ -289,7 +269,7 @@ upload_post_chunk (void *con_cls,
 
 	if (size > 0) {
 		if (! fwrite (data, sizeof (char), size, req->fh)) {
-			req->response = responses[PAGE_IO_ERROR];
+			req->response = XMS_RESPONSES[XMS_PAGE_IO_ERROR];
 			req->status = MHD_HTTP_INTERNAL_SERVER_ERROR;
 		}
 	}
@@ -304,20 +284,21 @@ open_file (	const char *filename,
 		unsigned int *status)
 {
 	static FILE *fh;
-
+	char path[PATH_MAX];
+	snprintf (path, PATH_MAX - 1, "/run/tmp/%s", filename);
 
 	/* check if the file exists */
-	fh = fopen (filename, "rb");
+	fh = fopen (path, "rb");
 
 	if (fh == NULL) {
 		/* try to create a new file */
-		fh = fopen (filename, "ab");
+		fh = fopen (path, "ab");
 
 		if (fh == NULL) {
-			fprintf (stderr, "failed to open `%s': %s\n",
+			fprintf (stderr, "failed to open file `%s': %s\n",
 				filename,
 				strerror (errno));
-			*response = responses[PAGE_IO_ERROR];
+			*response = XMS_RESPONSES[XMS_PAGE_IO_ERROR];
 			*status = MHD_HTTP_INTERNAL_SERVER_ERROR;
 		}
 	}
@@ -325,7 +306,7 @@ open_file (	const char *filename,
 		/* file exists */
 		fclose (fh);
 		fh = NULL;
-		*response = responses[PAGE_FILE_EXISTS];
+		*response = XMS_RESPONSES[XMS_PAGE_FILE_EXISTS];
 		*status = MHD_HTTP_FORBIDDEN;
 	}
 
@@ -339,14 +320,17 @@ request_completed_cb (	void *cls,
 			void **con_cls,
 			enum MHD_RequestTerminationCode toe)
 {
+	request_ctx *req = *con_cls;
+	(void) cls;
 #if defined(_DEBUG)
 	char *tdesc;
 	const union MHD_ConnectionInfo *ci;
 	char *ip_addr;
 	in_port_t port;
+#else
+	(void) connection;
+	(void) toe;
 #endif
-	request_ctx *req = *con_cls;
-	(void) cls;
 
 
 #if defined(_DEBUG)
@@ -360,7 +344,6 @@ request_completed_cb (	void *cls,
 		port = addr_in->sin_port;
 	}
 	else {
-		fprintf (stderr, "failed to get client info address\n");
 		ip_addr = "<unknown>";
 		port = 0;
 	}
@@ -392,14 +375,6 @@ request_completed_cb (	void *cls,
 	debug ("* Connection %s port %d closed: %s\n",
 		ip_addr, port, tdesc);
 #endif
-
-	if (busy && req->uploader) {
-		busy = false;
-/*
-		resume_all_connections (daemon, daemon_mode);
-*/
-		resume_next (daemon, daemon_mode);
-	}
 
 	if (req != NULL) {
 		destroy_request_ctx (req);
@@ -436,40 +411,6 @@ notify_connection_cb (	void *cls,
 			*socket_context = NULL;
 		}
 	}
-}
-
-
-extern void
-init_mhd_responses (void)
-{
-	pages[PAGE_DEFAULT] = _DEFAULT;
-	pages[PAGE_COMPLETED] = _COMPLETED;
-	pages[PAGE_FILE_EXISTS] = _EXISTS;
-	pages[PAGE_IO_ERROR] = _IO_ERROR;
-	pages[PAGE_BAD_REQUEST] = _BAD_REQUEST;
-
-	for (int i = 0; i < PAGE_MAX; i++) {
-		responses[i] = MHD_create_response_from_buffer (
-				strlen (pages[i]),
-				(void *) pages[i],
-				MHD_RESPMEM_PERSISTENT);
-
-		if (responses[i] == NULL)
-			die ("failed to create response #%d", i);
-
-		MHD_add_response_header (
-			responses[i],
-			MHD_HTTP_HEADER_CONTENT_TYPE,
-			DEFAULT_CONTENT_TYPE);
-	}
-}
-
-
-extern void
-free_mhd_responses (void)
-{
-	for (int i = 0; i < PAGE_MAX; i++)
-		MHD_destroy_response (responses[i]);
 }
 
 
