@@ -57,7 +57,7 @@ get_current_time_string (char *out[], size_t out_len)
 	snprintf (usec, USEC_SIZE + 1, "%s", nsec);
 	
 	len = strlen (*out);
-	snprintf (*out + len, DATE_SIZE - len, ".%s (%li)", usec, tp.tv_nsec);
+	snprintf (*out + len, DATE_SIZE - len, ".%s", usec);
 
 	return len;
 }
