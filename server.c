@@ -23,6 +23,9 @@
 #endif /* _MSC_VER */
 
 
+/* storage location, dirpath */
+char *XMS_STORAGE_DIR = NULL;
+
 /* allow only one uploader per a moment */
 volatile bool busy = false;
 
@@ -197,7 +200,8 @@ answer_cb (	void *cls,
 			req->response = XMS_RESPONSES[XMS_PAGE_COMPLETED];
 			req->status = MHD_HTTP_OK;
 			char path[PATH_MAX];
-			snprintf (path, PATH_MAX - 1, "/run/tmp/%s", req->filename);
+			snprintf (path, PATH_MAX - 1,
+				"%s/%s", XMS_STORAGE_DIR, req->filename);
 			remove (path);
 		}
 
@@ -285,7 +289,8 @@ open_file (	const char *filename,
 {
 	static FILE *fh;
 	char path[PATH_MAX];
-	snprintf (path, PATH_MAX - 1, "/run/tmp/%s", filename);
+	snprintf (path, PATH_MAX - 1,
+		"%s/%s", XMS_STORAGE_DIR, filename);
 
 	/* check if the file exists */
 	fh = fopen (path, "rb");

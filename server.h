@@ -2,6 +2,12 @@
 #define __SERVER_H
 
 #include "mhd.h"
+#include "server.h"
+
+
+/* storage location, dirpath */
+extern char *XMS_STORAGE_DIR;
+
 
 extern int
 accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen);

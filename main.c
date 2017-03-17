@@ -194,6 +194,9 @@ print_usage (const char *argv0)
 	/* TCP Fast Open switch */
 	desc ("-F", "enable TCP Fast Open support (Linux only)");
 #endif
+	/* file store location, dirpath */
+	desc (	"-L DIR_PATH",
+		"a directory where files will be stored, default `.'");
 	/* memory limit */
 	snprintf (buffer, BUFFER_SIZE,
 		"max memory size per connection, default %d",
@@ -224,7 +227,7 @@ main (int argc, char *argv[])
 	ops.memory_limit = DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT;
 	ops.memory_increment = DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT;
 
-	while ((opt = getopt (argc, argv, "p:t:DEFI:M:T:")) != -1) {
+	while ((opt = getopt (argc, argv, "p:t:DEFI:L:M:T:")) != -1) {
 		switch (opt) {
 		case 'p': {
 			int port;
@@ -262,6 +265,10 @@ main (int argc, char *argv[])
 				die ("Invalid memory increment: %s.", optarg);
 			ops.memory_increment = increment;
 		} break;
+		case 'L': {
+			XMS_STORAGE_DIR = optarg;
+			break;
+		} break;
 		case 'M': {
 			int limit;
 			sscanf (optarg, "%d", &limit);
@@ -281,6 +288,9 @@ main (int argc, char *argv[])
 			break;
 		} /* switch (opt) { */
 	} /* while ((opt = getopt (...) */
+
+	if (XMS_STORAGE_DIR == NULL)
+		XMS_STORAGE_DIR = ".";
 
 	/* initialize MHD default responses */
 	init_mhd_responses ();
