@@ -22,6 +22,7 @@ get_current_time_string (char *out[], size_t out_len)
 	char usec[USEC_SIZE + 1];
 	char *usecp;
 
+
 	if (clock_gettime (CLOCK_REALTIME, &tp) == -1) {
 		fprintf (stderr, "clock_gettime: %s\n",
 			strerror (errno));
@@ -43,7 +44,10 @@ get_current_time_string (char *out[], size_t out_len)
 	}
 
 	snprintf (usec, USEC_SIZE + 1, "%li", tp.tv_nsec);
-	for (i = strlen (usec), usecp = usec + i; i < USEC_SIZE; i++, usecp++)
+	/* prepend zeros */
+	len = strlen (usec);
+	memmove (usec + (USEC_SIZE - len), usec, len);
+	for (i = 0, usecp = usec; i < USEC_SIZE - len; i++, usecp++)
 		*usecp = '0';
 	usec[USEC_SIZE] = '\0';
 
