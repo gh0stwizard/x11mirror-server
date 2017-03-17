@@ -10,7 +10,7 @@
 
 
 /* a precision of floating part of seconds */
-#define USEC_SIZE 4
+#define USEC_SIZE 6
 #define NSEC_SIZE 9
 
 
@@ -47,9 +47,9 @@ get_current_time_string (char *out[], size_t out_len)
 
 	/* prepend zeros */
 	snprintf (nsec, NSEC_SIZE + 1, "%li", tp.tv_nsec);
-	len = strlen (nsec);
-	memmove (nsec + NSEC_SIZE - len, nsec, len);
-	for (i = 0, usecp = nsec; i < NSEC_SIZE - len; i++, usecp++)
+	len = NSEC_SIZE - strlen (nsec);
+	memmove (nsec + len, nsec, len);
+	for (i = 0, usecp = nsec; i < len; i++, usecp++)
 		*usecp = '0';
 	nsec[NSEC_SIZE] = '\0';
 	
