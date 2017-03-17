@@ -165,6 +165,11 @@ answer_cb (	void *cls,
 
 	if (req->type == POST) {
 		if (busy && ! req->uploader) {
+			/* no need to update upload_data_size, because
+			 * overwise we have to store the first data
+                         * somewhere and if we don't we will lost filename
+                         * header.
+                         */
 			suspend_connection (connection, req);
 			return MHD_YES;
 		}
@@ -176,17 +181,21 @@ answer_cb (	void *cls,
 				upload_data,
 				*upload_data_size);
 
-			if (! req->uploader && req->fh != NULL) {
+			/* we do this only once to stop spam "uploading..." */
+			if (! req->uploader && req->filename != NULL) {
 				/* seems to be everything is good */
+				busy = req->uploader = true;
 				warn (	connection, "uploading `%s'",
 					req->filename);
-				busy = req->uploader = true;
 			}
 
+			/* a data was proceeded no matter how */
 			*upload_data_size = 0;
 
 			return MHD_YES;
 		}
+
+		/* there is no more data */
 
 		if (req->fh != NULL) {
 			/* close the file ASAP */
@@ -196,23 +205,22 @@ answer_cb (	void *cls,
 
 		if (req->status == 0) {
 			/* upload successfully finished */
-			warn (connection, "uploaded `%s'", req->filename);
 			req->response = XMS_RESPONSES[XMS_PAGE_COMPLETED];
 			req->status = MHD_HTTP_OK;
+
 			char path[PATH_MAX];
 			snprintf (path, PATH_MAX - 1,
 				"%s/%s", XMS_STORAGE_DIR, req->filename);
 			remove (path);
+
+			warn (connection, "uploaded `%s'", req->filename);
 		}
 
 		/* job is done:
 		 * process a new request ASAP, e.g. before conn. closing
 		 */
-		if (busy && req->uploader) {
+		if (busy) {
 			busy = false;
-/*
-			resume_all_connections (daemon, daemon_mode);
-*/
 			resume_next (daemon, daemon_mode);
 		}
 
