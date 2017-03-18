@@ -14,10 +14,10 @@ typedef struct _request_ctx {
 	/* Request type: GET, POST, etc */
 	enum request_type type;
 
-	/* Handle to the POST processing state. */
+	/* POST: Handle to the POST processing state. */
 	struct MHD_PostProcessor *pp;
 
-	/* File handle where we write uploaded data. */
+	/* File handle to write uploaded data. */
 	FILE *fh;
 
 	/* HTTP response body we will return, NULL if not yet known. */
@@ -26,8 +26,11 @@ typedef struct _request_ctx {
 	/* HTTP status code we will return, 0 for undecided. */
 	unsigned int status;
 
-	/* Is this request current uploader */
+	/* POST: Is this request current uploader */
 	bool uploader;
+
+	/* GET: a client asking for our datafile */
+	bool getfile;
 } request_ctx;
 
 #endif /* _CONTEXTS_H */

@@ -37,6 +37,11 @@
 "<h1>Bad method.</h1>"\
 "</body></html>\r\n"
 
+#define _NOT_FOUND "<html>" _HEAD_TITLE \
+"<body>"\
+"<h1>File not found.</h1>"\
+"</body></html>\r\n"
+
 
 /* global definition */
 struct MHD_Response *XMS_RESPONSES[XMS_PAGE_MAX];
@@ -55,6 +60,7 @@ init_mhd_responses (void)
 	XMS_PAGES[XMS_PAGE_IO_ERROR] = _IO_ERROR;
 	XMS_PAGES[XMS_PAGE_BAD_REQUEST] = _BAD_REQUEST;
 	XMS_PAGES[XMS_PAGE_BAD_METHOD] = _BAD_METHOD;
+	XMS_PAGES[XMS_PAGE_NOT_FOUND] = _NOT_FOUND;
 
 	for (i = 0; i < XMS_PAGE_MAX; i++) {
 		XMS_RESPONSES[i] = MHD_create_response_from_buffer (
@@ -65,10 +71,13 @@ init_mhd_responses (void)
 		if (XMS_RESPONSES[i] == NULL)
 			die ("failed to create response #%d", i);
 
-		MHD_add_response_header (
+		if (MHD_NO == MHD_add_response_header (
 			XMS_RESPONSES[i],
 			MHD_HTTP_HEADER_CONTENT_TYPE,
-			DEFAULT_CONTENT_TYPE);
+			DEFAULT_CONTENT_TYPE))
+		{
+			die ("failed to add header to response #%d", i);
+		}
 	}
 }
 

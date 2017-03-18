@@ -9,6 +9,7 @@ enum {
 	XMS_PAGE_FILE_EXISTS,
 	XMS_PAGE_IO_ERROR,
 	XMS_PAGE_BAD_METHOD,
+	XMS_PAGE_NOT_FOUND,
 	XMS_PAGE_MAX
 };
 /* the values defined in responses.c */

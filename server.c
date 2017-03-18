@@ -10,6 +10,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -50,7 +51,18 @@ volatile bool busy = false;
    should be sufficient; do NOT use a value smaller than 256; for good
    performance, use 32k or 64k (i.e. 65536).
 */
-#define POSTBUFFERSIZE (64 * 1024)
+#define POST_BUFFER_SIZE (64 * 1024)
+
+/* From MHD manual, MHD_create_response_from_callback ():
+   block size preferred block size for querying crc (advisory only,
+   MHD may still call crc using smaller chunks); this is essentially
+   the buffer size used for IO , clients should pick a value
+   that is appropriate for IO and memory performance requirements;
+*/
+#define READ_BUFFER_SIZE (32 * 1024)
+
+/* we send our data back to client with this content type */
+#define XMS_FILE_CONTENT_TYPE "application/octet-stream"
 
 
 static int
@@ -69,6 +81,15 @@ open_file (struct MHD_Response **response, unsigned int *status);
 
 static void
 destroy_request_ctx (request_ctx *req);
+
+static int
+process_get_request (struct MHD_Connection *connection, request_ctx *req);
+
+static ssize_t
+file_reader_cb (void *cls, uint64_t pos, char *buf, size_t max);
+
+static void
+file_reader_free_cb (void *cls);
 
 
 /* ------------------------------------------------------------------ */
@@ -108,7 +129,6 @@ answer_cb (	void *cls,
 {
 	request_ctx *req = *con_cls;
 	(void) cls;
-	(void) url;
 	(void) version;
 
 
@@ -125,12 +145,13 @@ answer_cb (	void *cls,
 		req->pp = NULL;
 		req->fh = NULL;
 		req->uploader = false;
+		req->getfile = false;
 
 		/* initialize post processor */
 		if (0 == strcasecmp (method, MHD_HTTP_METHOD_POST)) {
 			req->pp = MHD_create_post_processor (
 					connection,
-					POSTBUFFERSIZE,
+					POST_BUFFER_SIZE,
 					&upload_post_chunk,
 					(void *) req);
 
@@ -145,6 +166,9 @@ answer_cb (	void *cls,
 		}
 		else if (0 == strcasecmp (method, MHD_HTTP_METHOD_GET)) {
 			req->type = GET;
+
+			if (strncmp (url, "/get", 5) == 0)
+				req->getfile = true;
 		}
 		else {
 			req->response = XMS_RESPONSES[XMS_PAGE_BAD_METHOD];
@@ -162,6 +186,7 @@ answer_cb (	void *cls,
 			/* we've failed in the middle of upload */
 			busy = false;
 			req->uploader = false;
+			(void) remove (XMS_TEMP_FILE);
 			resume_next ();
 		}
 
@@ -181,7 +206,8 @@ answer_cb (	void *cls,
 
 	if (req->type == POST) {
 		if (busy && ! req->uploader) {
-			/* no need to update upload_data_size, because
+			/**
+			 * no need to update upload_data_size, because
 			 * overwise we have to store the first data chunk
                          * somewhere and if we don't we will lost
 			 * the filename header & data too.
@@ -197,7 +223,8 @@ answer_cb (	void *cls,
 			{
 				busy = true;
 
-				/* we do this only once to prevent a spam
+				/**
+				 * we do this only once to prevent a spam
 				 * "uploading..."
 				 */
 				if (! req->uploader) {
@@ -206,8 +233,10 @@ answer_cb (	void *cls,
 					warn (connection, "uploading...");
 				}
 			}
-			else
+			else {
+				(void) remove (XMS_TEMP_FILE);
 				warn (connection, "upload has been failed");
+			}
 
 			/* a data was proceeded no matter how */
 			*upload_data_size = 0;
@@ -219,7 +248,7 @@ answer_cb (	void *cls,
 
 		if (req->fh != NULL) {
 			/* close the file ASAP */
-			fclose (req->fh);
+			(void) fclose (req->fh);
 			req->fh = NULL;
 		}
 
@@ -235,14 +264,15 @@ answer_cb (	void *cls,
 			else {
 				/* XXX: fatal error?? */
 				/* delete temp file, its not needed */
-				remove (XMS_TEMP_FILE);
+				(void) remove (XMS_TEMP_FILE);
 				warn (	connection,
 					"uploaded with error: rename: %s",
 					strerror (errno));
 			}
 		}
 
-		/* job is done:
+		/** 
+		 * Job done:
 		 * process a new request ASAP, e.g. before conn. closing
 		 */
 		if (busy) {
@@ -255,8 +285,7 @@ answer_cb (	void *cls,
 	}
 
 	/* GET */
-	return MHD_queue_response
-		(connection, MHD_HTTP_OK, XMS_RESPONSES[XMS_PAGE_DEFAULT]);
+	return process_get_request (connection, req);
 }
 
 
@@ -338,13 +367,96 @@ open_file (struct MHD_Response **response, unsigned int *status)
 	}
 	else {
 		/* file exists */
-		fclose (fh);
+		(void) fclose (fh);
 		fh = NULL;
 		*response = XMS_RESPONSES[XMS_PAGE_FILE_EXISTS];
 		*status = MHD_HTTP_FORBIDDEN;
 	}
 
 	return fh;
+}
+
+
+static int
+process_get_request (struct MHD_Connection *connection, request_ctx *req)
+{
+	FILE *fh;
+	int fd;
+	struct stat st;
+	struct MHD_Response *response;
+	int ret;
+
+
+	if (! req->getfile)
+		return MHD_queue_response (
+			connection,
+			MHD_HTTP_OK,
+			XMS_RESPONSES[XMS_PAGE_DEFAULT]);
+
+	fh = fopen (XMS_DEST_FILE, "rb");
+
+	if (fh != NULL) {
+		fd = fileno (fh);
+
+		if (fd == -1) {
+			(void) fclose (fh);
+			return MHD_NO;
+		}
+
+		if (0 != fstat (fd, &st) || ! S_ISREG (st.st_mode)) {
+			/* not a regular file */
+			(void) fclose (fh);
+			fh = NULL;
+		}
+	}
+
+	if (fh == NULL)
+		return MHD_queue_response (
+			connection,
+			MHD_HTTP_NOT_FOUND,
+			XMS_RESPONSES[XMS_PAGE_NOT_FOUND]);
+
+	response = MHD_create_response_from_callback (
+			st.st_size,
+			READ_BUFFER_SIZE,
+			&file_reader_cb,
+			fh,
+			&file_reader_free_cb);
+
+	ret = MHD_add_response_header (
+		response,
+		MHD_HTTP_HEADER_CONTENT_TYPE,
+		XMS_FILE_CONTENT_TYPE);
+
+	if ((response == NULL) || (ret == MHD_NO)) {
+		(void) fclose (fh);
+		return MHD_NO;
+	}
+
+	ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
+	MHD_destroy_response (response);
+
+	return ret;
+}
+
+
+static ssize_t
+file_reader_cb (void *cls, uint64_t pos, char *buf, size_t max)
+{
+	FILE *fh = (FILE *)cls;
+
+	(void) fseek (fh, pos, SEEK_SET);
+
+	return fread (buf, 1, max, fh);
+}
+
+
+static void
+file_reader_free_cb (void *cls)
+{
+	FILE * fh = (FILE *)cls;
+
+	(void) fclose (fh);
 }
 
 
@@ -424,10 +536,11 @@ destroy_request_ctx (request_ctx *req)
 		MHD_destroy_post_processor (req->pp);
 
 	if (req->fh != NULL)
-		fclose (req->fh);
+		(void) fclose (req->fh);
 
 	free (req);
 }
+
 
 extern void
 init_server_data (void)
