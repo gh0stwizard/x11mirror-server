@@ -9,7 +9,7 @@
 
 #define _DEFAULT "<html>" _HEAD_TITLE \
 "<body>"\
-"<h1>Hello!</h1>"\
+"<img alt=\"pwn2own\" src=\"/get.jpg\"></img>"\
 "</body></html>\r\n"
 
 #define _COMPLETED "<html>" _HEAD_TITLE \

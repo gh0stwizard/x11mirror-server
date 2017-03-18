@@ -68,7 +68,7 @@ volatile bool busy = false;
 #define READ_BUFFER_SIZE (32 * 1024)
 
 /* we send our data back to client with this content type */
-#define XMS_FILE_CONTENT_TYPE "application/octet-stream"
+#define XMS_FILE_CONTENT_TYPE "image/jpeg"
 
 
 static int
@@ -173,7 +173,7 @@ answer_cb (	void *cls,
 		else if (0 == strcasecmp (method, MHD_HTTP_METHOD_GET)) {
 			req->type = GET;
 
-			if (strncmp (url, "/get", 5) == 0)
+			if (strncmp (url, "/get.jpg", 9) == 0)
 				req->getfile = true;
 		}
 		else {
@@ -541,6 +541,13 @@ request_completed_cb (	void *cls,
 	debug ("* Connection %s port %d closed: %s\n",
 		ip_addr, port, tdesc);
 #endif
+
+	if (busy && req->uploader) {
+		busy = false;
+		req->uploader = false;
+		(void) remove (XMS_TEMP_FILE);
+		resume_next ();
+	}
 
 	if (req != NULL) {
 		destroy_request_ctx (req);
