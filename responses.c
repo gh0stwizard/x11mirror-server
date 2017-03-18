@@ -32,7 +32,13 @@
 "<h1>Bad request.</h1>"\
 "</body></html>\r\n"
 
+#define _BAD_METHOD "<html>" _HEAD_TITLE \
+"<body>"\
+"<h1>Bad method.</h1>"\
+"</body></html>\r\n"
 
+
+/* global definition */
 struct MHD_Response *XMS_RESPONSES[XMS_PAGE_MAX];
 const char * XMS_PAGES[XMS_PAGE_MAX];
 
@@ -40,13 +46,17 @@ const char * XMS_PAGES[XMS_PAGE_MAX];
 extern void
 init_mhd_responses (void)
 {
+	int i;
+
+
 	XMS_PAGES[XMS_PAGE_DEFAULT] = _DEFAULT;
 	XMS_PAGES[XMS_PAGE_COMPLETED] = _COMPLETED;
 	XMS_PAGES[XMS_PAGE_FILE_EXISTS] = _EXISTS;
 	XMS_PAGES[XMS_PAGE_IO_ERROR] = _IO_ERROR;
 	XMS_PAGES[XMS_PAGE_BAD_REQUEST] = _BAD_REQUEST;
+	XMS_PAGES[XMS_PAGE_BAD_METHOD] = _BAD_METHOD;
 
-	for (int i = 0; i < XMS_PAGE_MAX; i++) {
+	for (i = 0; i < XMS_PAGE_MAX; i++) {
 		XMS_RESPONSES[i] = MHD_create_response_from_buffer (
 				strlen (XMS_PAGES[i]),
 				(void *) XMS_PAGES[i],
@@ -66,6 +76,9 @@ init_mhd_responses (void)
 extern void
 free_mhd_responses (void)
 {
-	for (int i = 0; i < XMS_PAGE_MAX; i++)
+	int i;
+
+
+	for (i = 0; i < XMS_PAGE_MAX; i++)
 		MHD_destroy_response (XMS_RESPONSES[i]);
 }

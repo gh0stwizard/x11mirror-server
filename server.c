@@ -143,8 +143,13 @@ answer_cb (	void *cls,
 
 			req->type = POST;
 		}
-		else
+		else if (0 == strcasecmp (method, MHD_HTTP_METHOD_GET)) {
 			req->type = GET;
+		}
+		else {
+			req->response = XMS_RESPONSES[XMS_PAGE_BAD_METHOD];
+			req->status = MHD_HTTP_METHOD_NOT_ALLOWED;
+		}
 
 		*con_cls = (void *) req;
 
@@ -153,7 +158,7 @@ answer_cb (	void *cls,
 
 	if (req->status != 0) {
 		/* something went wrong... */
-		if (busy && req->uploader) {
+		if (req->uploader && busy) {
 			/* we've failed in the middle of upload */
 			busy = false;
 			req->uploader = false;
@@ -441,6 +446,14 @@ init_server_data (void)
 	snprintf (path, PATH_MAX - 1, "%s/" DEST_FILENAME, XMS_STORAGE_DIR);
 	XMS_DEST_FILE = strdup (path);
 #endif
+
+	/* TODO: create a directory if necessary */
+
+	/* cleanup temporary file if it exists */
+	errno = 0;
+	if (remove (XMS_TEMP_FILE) != 0 && errno != ENOENT)
+		die (	"FATAL ERROR: remove temporary file `%s': %s",
+			XMS_TEMP_FILE, strerror (errno));
 }
 
 
