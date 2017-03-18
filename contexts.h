@@ -20,17 +20,11 @@ typedef struct _request_ctx {
 	/* File handle where we write uploaded data. */
 	FILE *fh;
 
-	/* Filename to upload */
-	char *filename;
-
 	/* HTTP response body we will return, NULL if not yet known. */
 	struct MHD_Response *response;
 
 	/* HTTP status code we will return, 0 for undecided. */
 	unsigned int status;
-
-	/* Suspend index */
-	size_t suspend_index;
 
 	/* Is this request current uploader */
 	bool uploader;

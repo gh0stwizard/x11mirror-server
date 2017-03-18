@@ -29,4 +29,10 @@ request_completed_cb (	void *cls,
 			enum MHD_RequestTerminationCode toe);
 
 
+extern void
+init_server_data (void);
+
+extern void
+free_server_data (void);
+
 #endif /* __SERVER_H */

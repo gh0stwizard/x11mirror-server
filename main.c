@@ -5,6 +5,11 @@
 #include "responses.h"
 #include <errno.h>
 #include <limits.h>
+#ifndef _POSIX_C_SOURCE
+/* nanosleep */
+#define _POSIX_C_SOURCE 199309L
+#endif
+#include <time.h>
 
 #ifdef _MSC_VER
 #ifndef strcasecmp
@@ -28,7 +33,7 @@
 /* MHD_OPTION_CONNECTION_MEMORY_LIMIT */
 #define DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT (128 * 1024)
 /* MHD_OPTION_CONNECTION_MEMORY_INCREMENT */
-#define DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT (4 * 1024)
+#define DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT (1 * 1024)
 
 
 typedef struct _httpd_options {
@@ -148,7 +153,7 @@ start_httpd (httpd_options *ops)
 static void
 stop_httpd (struct MHD_Daemon *daemon)
 {
-	debug ("* Shutting down the daemon.\n");
+	debug ("* Shutdown complete\n");
 
 	if (daemon != NULL)
 		MHD_stop_daemon (daemon);
@@ -212,6 +217,7 @@ main (int argc, char *argv[])
 	struct MHD_Daemon *daemon;
 	httpd_options ops;
 	int opt;
+	const struct timespec ts_wait = { 2, 0 };
 
 
 	ops.mode = DEFAULT_HTTPD_MODE;
@@ -260,6 +266,7 @@ main (int argc, char *argv[])
 			ops.memory_increment = increment;
 		} break;
 		case 'L': {
+			/* see server.c */
 			XMS_STORAGE_DIR = optarg;
 			break;
 		} break;
@@ -283,13 +290,17 @@ main (int argc, char *argv[])
 		} /* switch (opt) { */
 	} /* while ((opt = getopt (...) */
 
+	/* default storage location */
 	if (XMS_STORAGE_DIR == NULL)
 		XMS_STORAGE_DIR = ".";
 
-	/* initialize MHD default responses */
+	/* initialize server internal data (server.c) */
+	init_server_data ();
+
+	/* initialize MHD default responses (responses.c) */
 	init_mhd_responses ();
 
-	/* we store suspended connection in special pool */
+	/* we store suspended connections in special pool (suspend.c) */
 	init_suspend_pool ();
 	
 	daemon = start_httpd (&ops);
@@ -301,10 +312,19 @@ main (int argc, char *argv[])
 
 	(void) getchar ();
 
+	debug ("* Shutting down the daemon...\n");
+
 	resume_all_connections ();
+	/* we have to wait a bit, to get a chance MHD resume
+	 * connections properly
+         */
+	nanosleep (&ts_wait, NULL);
+
+	/* FIXME: replace default callbacks to stubs */
 	stop_httpd (daemon);
 	free_mhd_responses ();
 	free_suspend_pool ();
+	free_server_data ();
 
 	return 0;
 }

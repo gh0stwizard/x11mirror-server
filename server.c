@@ -23,11 +23,25 @@
 #include <strings.h>
 #endif /* _MSC_VER */
 
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
 
-/* storage location, dirpath */
+
+/* storage location, dirpath (global)*/
 char *XMS_STORAGE_DIR = NULL;
 
-/* allow only one uploader per a moment */
+/* temporary & target filepaths, see init_server_data () */
+#ifndef TEMP_FILENAME
+#define TEMP_FILENAME "xms.temp"
+#endif
+static char *XMS_TEMP_FILE;
+#ifndef DEST_FILENAME
+#define DEST_FILENAME "xms.dest"
+#endif
+static char *XMS_DEST_FILE;
+
+/* we allow only one uploader per a moment */
 volatile bool busy = false;
 
 /* From libmicrohttpd manual:
@@ -36,7 +50,7 @@ volatile bool busy = false;
    should be sufficient; do NOT use a value smaller than 256; for good
    performance, use 32k or 64k (i.e. 65536).
 */
-#define POSTBUFFERSIZE (32 * 1024)
+#define POSTBUFFERSIZE (64 * 1024)
 
 
 static int
@@ -51,9 +65,7 @@ upload_post_chunk (	void *coninfo_cls,
 			size_t size);
 
 static FILE *
-open_file (	const char *filename,
-		struct MHD_Response **response,
-		unsigned int *status);
+open_file (struct MHD_Response **response, unsigned int *status);
 
 static void
 destroy_request_ctx (request_ctx *req);
@@ -112,8 +124,6 @@ answer_cb (	void *cls,
 		req->status = 0; /* we are not finished yet */
 		req->pp = NULL;
 		req->fh = NULL;
-		req->filename = NULL;
-		req->suspend_index = UINT_MAX;
 		req->uploader = false;
 
 		/* initialize post processor */
@@ -143,6 +153,13 @@ answer_cb (	void *cls,
 
 	if (req->status != 0) {
 		/* something went wrong... */
+		if (busy && req->uploader) {
+			/* we've failed in the middle of upload */
+			busy = false;
+			req->uploader = false;
+			resume_next ();
+		}
+
 		if (*upload_data_size == 0) {
 			/* we can send a response only after reading all
 			   headers & data. */
@@ -150,7 +167,7 @@ answer_cb (	void *cls,
 				(connection, req->status, req->response);
 		}
 		else {
-			/* do nothing and wait until headers & data */
+			/* do nothing and wait until all headers & data */
 			*upload_data_size = 0;
 
 			return MHD_YES;
@@ -160,28 +177,32 @@ answer_cb (	void *cls,
 	if (req->type == POST) {
 		if (busy && ! req->uploader) {
 			/* no need to update upload_data_size, because
-			 * overwise we have to store the first data
-                         * somewhere and if we don't we will lost filename
-                         * header.
+			 * overwise we have to store the first data chunk
+                         * somewhere and if we don't we will lost
+			 * the filename header & data too.
                          */
-			suspend_connection (connection, req);
+			suspend_connection (connection);
 			return MHD_YES;
 		}
 
 		if (*upload_data_size > 0) {
 			/* uploading data */
-			(void) MHD_post_process (
-				req->pp,
-				upload_data,
-				*upload_data_size);
+			if (MHD_YES == MHD_post_process
+				(req->pp, upload_data, *upload_data_size))
+			{
+				busy = true;
 
-			/* we do this only once to stop spam "uploading..." */
-			if (! req->uploader && req->filename != NULL) {
-				/* seems to be everything is good */
-				busy = req->uploader = true;
-				warn (	connection, "uploading `%s'",
-					req->filename);
+				/* we do this only once to prevent a spam
+				 * "uploading..."
+				 */
+				if (! req->uploader) {
+					/* seems to be everything is good */
+					req->uploader = true;
+					warn (connection, "uploading...");
+				}
 			}
+			else
+				warn (connection, "upload has been failed");
 
 			/* a data was proceeded no matter how */
 			*upload_data_size = 0;
@@ -202,12 +223,18 @@ answer_cb (	void *cls,
 			req->response = XMS_RESPONSES[XMS_PAGE_COMPLETED];
 			req->status = MHD_HTTP_OK;
 
-			char path[PATH_MAX];
-			snprintf (path, PATH_MAX - 1,
-				"%s/%s", XMS_STORAGE_DIR, req->filename);
-			remove (path);
-
-			warn (connection, "uploaded `%s'", req->filename);
+			errno = 0;
+			if (rename (XMS_TEMP_FILE, XMS_DEST_FILE) == 0) {
+				warn (connection, "uploaded!");
+			}
+			else {
+				/* XXX: fatal error?? */
+				/* delete temp file, its not needed */
+				remove (XMS_TEMP_FILE);
+				warn (	connection,
+					"uploaded with error: rename: %s",
+					strerror (errno));
+			}
 		}
 
 		/* job is done:
@@ -239,44 +266,43 @@ upload_post_chunk (void *con_cls,
               uint64_t off,
               size_t size)
 {
-	request_ctx *req = con_cls;
+	request_ctx *req = con_cls; /* we expect that it is OK */
+	struct MHD_Response *response;
+	unsigned int status;
 	(void) kind;
 	(void) content_type;
 	(void) transfer_encoding;
 	(void) off;
+	(void) filename; /* we don't rely on value of `filename' */
 
 
-	if (       (filename == NULL)
-		|| (strlen (filename) == 0)
-		|| (strlen (filename) >= 256)
-		|| (strncmp (key, "file", 5) != 0))
-	{
+	if (strncmp (key, "file", 5) != 0) {
 		req->response = XMS_RESPONSES[XMS_PAGE_BAD_REQUEST];
 		req->status = MHD_HTTP_BAD_REQUEST;
+
 		return MHD_YES;
 	}
 
+	/* open file */
 	if (req->fh == NULL) {
-		struct MHD_Response *response;
-		unsigned int status;
+		req->fh = open_file (&response, &status);
 
-		req->fh = open_file (filename, &response, &status);
-
-		if (req->fh != NULL) {
-			req->filename = strdup (filename);
-		}
-		else {
+		if (req->fh == NULL) {
+			/* we failed to open a file */
 			req->response = response;
 			req->status = status;
 
-			return MHD_YES;
+			return MHD_NO;
 		}
 	}
 
+	/* write the data */
 	if (size > 0) {
 		if (! fwrite (data, sizeof (char), size, req->fh)) {
 			req->response = XMS_RESPONSES[XMS_PAGE_IO_ERROR];
 			req->status = MHD_HTTP_INTERNAL_SERVER_ERROR;
+
+			return MHD_NO;
 		}
 	}
 
@@ -285,25 +311,21 @@ upload_post_chunk (void *con_cls,
 
 
 static FILE *
-open_file (	const char *filename,
-		struct MHD_Response **response,
-		unsigned int *status)
+open_file (struct MHD_Response **response, unsigned int *status)
 {
 	static FILE *fh;
-	char path[PATH_MAX];
-	snprintf (path, PATH_MAX - 1,
-		"%s/%s", XMS_STORAGE_DIR, filename);
+
 
 	/* check if the file exists */
-	fh = fopen (path, "rb");
+	fh = fopen (XMS_TEMP_FILE, "rb");
 
 	if (fh == NULL) {
 		/* try to create a new file */
-		fh = fopen (path, "ab");
+		fh = fopen (XMS_TEMP_FILE, "ab");
 
 		if (fh == NULL) {
 			fprintf (stderr, "failed to open file `%s': %s\n",
-				filename,
+				XMS_TEMP_FILE,
 				strerror (errno));
 			*response = XMS_RESPONSES[XMS_PAGE_IO_ERROR];
 			*status = MHD_HTTP_INTERNAL_SERVER_ERROR;
@@ -393,9 +415,6 @@ request_completed_cb (	void *cls,
 static void
 destroy_request_ctx (request_ctx *req)
 {
-	if (req->filename != NULL)
-		free (req->filename);
-
 	if (req->pp != NULL)
 		MHD_destroy_post_processor (req->pp);
 
@@ -403,4 +422,34 @@ destroy_request_ctx (request_ctx *req)
 		fclose (req->fh);
 
 	free (req);
+}
+
+extern void
+init_server_data (void)
+{
+	char path[PATH_MAX];
+
+
+#if defined(_WIN32)
+
+#error not implemented yet
+
+#else /* Unixes */
+	snprintf (path, PATH_MAX - 1, "%s/" TEMP_FILENAME, XMS_STORAGE_DIR);
+	XMS_TEMP_FILE = strdup (path);
+
+	snprintf (path, PATH_MAX - 1, "%s/" DEST_FILENAME, XMS_STORAGE_DIR);
+	XMS_DEST_FILE = strdup (path);
+#endif
+}
+
+
+extern void
+free_server_data (void)
+{
+	if (XMS_TEMP_FILE != NULL)
+		free (XMS_TEMP_FILE);
+
+	if (XMS_DEST_FILE != NULL)
+		free (XMS_DEST_FILE);
 }

@@ -25,6 +25,7 @@ init_suspend_pool (void)
 		die ("failed to initialize suspend pool");
 }
 
+
 extern void
 free_suspend_pool (void)
 {
@@ -61,7 +62,7 @@ resume_all_connections (void)
 			connection = (struct MHD_Connection *)entry;
 			MHD_resume_connection (connection);
 #if defined(_DEBUG)
-			warn (connection, "resuming");
+			warn (connection, "resumed");
 #endif
 		}
 		else
@@ -112,10 +113,9 @@ resume_next (void)
 
 
 extern void
-suspend_connection (struct MHD_Connection *connection, request_ctx *req)
+suspend_connection (struct MHD_Connection *connection)
 {
 	if (vector_add (pool, (void *) connection)) {
-		req->suspend_index = vector_count (pool) - 1;
 		MHD_suspend_connection (connection);
 #if defined(_DEBUG)
 		warn (connection, "suspend");

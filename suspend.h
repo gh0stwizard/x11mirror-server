@@ -15,7 +15,7 @@ extern void
 resume_all_connections (void);
 
 extern void
-suspend_connection (struct MHD_Connection *connection, request_ctx *req);
+suspend_connection (struct MHD_Connection *connection);
 
 extern void
 resume_next (void);

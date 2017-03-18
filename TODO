@@ -1,1 +1,3 @@
 * fix die() in MHD threads (suspend.c)
+* fix mutex and  -Wl,--allow-multiple-definition
+* replace default callbacks to stubs on shutdown (main.c)
