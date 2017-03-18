@@ -5,6 +5,7 @@
 #include "contexts.h"
 #include "responses.h"
 #include "mhd_utils.h"
+#include "imagemagick.h"
 
 #include <stdlib.h>
 #ifndef _POSIX_SOURCE
@@ -38,13 +39,18 @@ char *XMS_STORAGE_DIR = NULL;
 
 /* temporary & target filepaths, see init_server_data () */
 #ifndef TEMP_FILENAME
-#define TEMP_FILENAME "xms.temp"
+#define TEMP_FILENAME "xms-temp"
 #endif
 static char *XMS_TEMP_FILE;
 #ifndef DEST_FILENAME
-#define DEST_FILENAME "xms.dest"
+#define DEST_FILENAME "xms-dest"
 #endif
 static char *XMS_DEST_FILE;
+/* a converted file (imagemagick.c) */
+#ifndef CONV_FILENAME
+#define CONV_FILENAME "xms.jpg"
+#endif
+static char *XMS_CONV_FILE;
 
 /* we allow only one uploader per a moment */
 volatile bool busy = false;
@@ -264,7 +270,13 @@ answer_cb (	void *cls,
 
 			errno = 0;
 			if (rename (XMS_TEMP_FILE, XMS_DEST_FILE) == 0) {
-				warn (connection, "uploaded!");
+				warn (connection, "converting...");
+
+				if (convert (XMS_DEST_FILE, XMS_CONV_FILE))
+					warn (connection, "uploaded!");
+				else
+					warn (	connection,
+						"uploaded with error: convert");
 			}
 			else {
 				/* XXX: fatal error?? */
@@ -403,7 +415,7 @@ process_get_request (struct MHD_Connection *connection, request_ctx *req)
 
 	warn (connection, "downloading...");
 
-	fh = fopen (XMS_DEST_FILE, "rb");
+	fh = fopen (XMS_CONV_FILE, "rb");
 
 	if (fh != NULL) {
 		fd = fileno (fh);
@@ -570,6 +582,9 @@ init_server_data (void)
 
 	snprintf (path, PATH_MAX - 1, "%s/" DEST_FILENAME, XMS_STORAGE_DIR);
 	XMS_DEST_FILE = strdup (path);
+
+	snprintf (path, PATH_MAX - 1, "%s/" CONV_FILENAME, XMS_STORAGE_DIR);
+	XMS_CONV_FILE = strdup (path);
 #endif
 
 	/* TODO: create a directory if necessary */
@@ -590,4 +605,7 @@ free_server_data (void)
 
 	if (XMS_DEST_FILE != NULL)
 		free (XMS_DEST_FILE);
+
+	if (XMS_CONV_FILE != NULL)
+		free (XMS_CONV_FILE);
 }

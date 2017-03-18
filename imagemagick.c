@@ -1,4 +1,5 @@
 #include "timeinfo.h"
+#include "common.h"
 #include <stdio.h>
 #include <stdbool.h>
 #ifndef _POSIX_SOURCE
@@ -67,7 +68,8 @@ convert (const char *in, const char *out)
 	exception = AcquireExceptionInfo ();
 
 	if (image_info && exception) {
-		SetErrorHandler (error_handler);
+		/* XXX: do we need always set the error handler?? */
+		(void) SetErrorHandler (error_handler);
 
 		status = ConvertImageCommand (
 			image_info,
@@ -80,6 +82,8 @@ convert (const char *in, const char *out)
 				CatchException (exception);
 		}
 	}
+	else
+		debug ("! FATAL ERROR: failed to initialize IM\n");
 
 	DestroyImageInfo (image_info);
 	DestroyExceptionInfo (exception);
