@@ -1,6 +1,7 @@
 #ifndef _TIMEINFO_H
 #define _TIMEINFO_H
 
+#include <sys/types.h>
 
 #define TIME_FMT	"%z %F %T"
 #define DATE_SIZE	256

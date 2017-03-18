@@ -7,6 +7,10 @@
 #include "mhd_utils.h"
 
 #include <stdlib.h>
+#ifndef _POSIX_SOURCE
+/* PATH_MAX */
+#define _POSIX_SOURCE
+#endif
 #include <limits.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -213,6 +217,7 @@ answer_cb (	void *cls,
 			 * the filename header & data too.
                          */
 			suspend_connection (connection);
+
 			return MHD_YES;
 		}
 
@@ -387,11 +392,16 @@ process_get_request (struct MHD_Connection *connection, request_ctx *req)
 	int ret;
 
 
-	if (! req->getfile)
+	if (! req->getfile) {
+		warn (connection, "ask default page");
+
 		return MHD_queue_response (
 			connection,
 			MHD_HTTP_OK,
 			XMS_RESPONSES[XMS_PAGE_DEFAULT]);
+	}
+
+	warn (connection, "downloading...");
 
 	fh = fopen (XMS_DEST_FILE, "rb");
 
@@ -400,6 +410,7 @@ process_get_request (struct MHD_Connection *connection, request_ctx *req)
 
 		if (fd == -1) {
 			(void) fclose (fh);
+
 			return MHD_NO;
 		}
 
@@ -430,6 +441,7 @@ process_get_request (struct MHD_Connection *connection, request_ctx *req)
 
 	if ((response == NULL) || (ret == MHD_NO)) {
 		(void) fclose (fh);
+
 		return MHD_NO;
 	}
 
@@ -454,7 +466,7 @@ file_reader_cb (void *cls, uint64_t pos, char *buf, size_t max)
 static void
 file_reader_free_cb (void *cls)
 {
-	FILE * fh = (FILE *)cls;
+	FILE *fh = (FILE *)cls;
 
 	(void) fclose (fh);
 }
