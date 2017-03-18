@@ -5,10 +5,6 @@
 #include "responses.h"
 #include <errno.h>
 #include <limits.h>
-#ifndef _POSIX_C_SOURCE
-/* nanosleep */
-#define _POSIX_C_SOURCE 199309L
-#endif
 #include <time.h>
 
 #ifdef _MSC_VER
@@ -120,8 +116,8 @@ start_httpd (httpd_options *ops)
 	debug ("* Start listener on port %d\n", ops->port);
 	debug ("* Connection timeout: %d\n", ops->connect_timeout);
 	debug ("* Thread pool size: %d\n", ops->thread_pool_size);
-	debug ("* Memory limit per connection: %u\n", ops->memory_limit);
-	debug ("* Memory increment per connection: %u\n", ops->memory_increment);
+	debug ("* Memory limit per connection: %zu\n", ops->memory_limit);
+	debug ("* Memory increment per connection: %zu\n", ops->memory_increment);
 
 #if MHD_VERSION >= 0x00095100
 	if (ops->mode & MHD_USE_EPOLL)

@@ -8,10 +8,6 @@
 #include "imagemagick.h"
 
 #include <stdlib.h>
-#ifndef _POSIX_SOURCE
-/* PATH_MAX */
-#define _POSIX_SOURCE
-#endif
 #include <limits.h>
 #include <errno.h>
 #include <stdbool.h>

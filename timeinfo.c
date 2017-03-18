@@ -1,9 +1,5 @@
 #include <stdio.h>
 #include <string.h>
-#ifndef _POSIX_C_SOURCE
-/* clock_gettime */
-#define _POSIX_C_SOURCE 199309L
-#endif
 #include <time.h>
 #include <errno.h>
 #include "timeinfo.h"

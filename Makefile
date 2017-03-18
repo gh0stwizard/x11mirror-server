@@ -7,6 +7,7 @@ IM_LIBS = $(shell pkg-config --libs MagickWand)
 # user flags
 LIBS ?= 
 CFLAGS ?= -Wall -Wextra -std=c99 -pedantic
+CFLAGS += -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=500
 # debug
 CFLAGS += -D_DEBUG -g
 LDFLAGS ?= -Wl,--allow-multiple-definition

@@ -16,10 +16,6 @@
 #if defined (_WIN32)
 #include <winsock2.h>
 #else
-#ifndef _XOPEN_SOURCE
-/* strdup */
-#define _XOPEN_SOURCE 500
-#endif
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>

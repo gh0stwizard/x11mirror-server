@@ -2,10 +2,6 @@
 #include "common.h"
 #include <stdio.h>
 #include <stdbool.h>
-#ifndef _POSIX_SOURCE
-/* PATH_MAX */
-#define _POSIX_SOURCE
-#endif
 #include <limits.h>
 #include <wand/MagickWand.h>
 
