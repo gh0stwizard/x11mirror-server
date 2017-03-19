@@ -7,7 +7,11 @@
 
 #define _HEAD_TITLE "<head><title>x11mirror-server</title></head>"
 
-#define _DEFAULT "<html>" _HEAD_TITLE \
+#define _DEFAULT "<html>"\
+"<head>"\
+"<title>x11mirror-server</title>"\
+"<meta http-equiv=\"refresh\" content=\"5\">"\
+"</head>"\
 "<body>"\
 "<img alt=\"pwn2own\" src=\"/get.jpg\"></img>"\
 "</body></html>\r\n"
