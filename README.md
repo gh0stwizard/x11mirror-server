@@ -1,4 +1,4 @@
-# x11mirror-server: a simple HTTP server to x11mirror-client project
+# x11mirror-server
 
 
 ## Description
@@ -36,6 +36,9 @@ Options:
 Tested only on GNU/Linux at the moment.
 
 ```
+shell> # you may tell where is libmicrohttpd has installed like that
+shell> export PKG_CONFIG_PATH=/path/to/lib/pkgconfig
+shell> export LD_LIBRARY_PATH=/path/to/lib
 shell> make
 ```
 
