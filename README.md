@@ -45,11 +45,10 @@ shell> make
 
 ## Credits
 
-I am grateful for provided support of [libmicrohttpd][] developers.
+I am grateful for provided support of
+[libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/) developers.
 Especially I thank to Evgeny Grin, which answered to many questions and
 gave me helpful advices.
 
 
 [x11mirror-client]: https://github.com/gh0stwizard/x11mirror-client
-
-[libmircohttpd]: https://www.gnu.org/software/libmicrohttpd/
