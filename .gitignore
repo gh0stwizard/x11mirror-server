@@ -4,3 +4,6 @@ x11mirror-server
 localtest.sh
 big*
 test/
+xms.jpg
+xms-dest
+xms-temp

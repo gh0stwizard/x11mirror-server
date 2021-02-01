@@ -166,6 +166,7 @@ print_usage (const char *argv0)
 	fprintf (stderr, "Usage: %s [-p PORT] [OPTIONS]\n", argv0);
 	fprintf (stderr, "Options:\n");
 #define desc(o,d) fprintf (stderr, "  %-24s  %s\n", o, d);
+	desc ("-h", "print this help");
 	/* listener port */
 	snprintf (buffer, BUFFER_SIZE,
 		"a port number to listen, default %d",
@@ -190,7 +191,7 @@ print_usage (const char *argv0)
 	desc ("-F", "enable TCP Fast Open support (Linux only)");
 #endif
 	/* file store location, dirpath */
-	desc (	"-L DIR_PATH",
+	desc ("-L DIR_PATH",
 		"a directory where files will be stored, default `.'");
 	/* memory limit */
 	snprintf (buffer, BUFFER_SIZE,
@@ -223,8 +224,9 @@ main (int argc, char *argv[])
 	ops.memory_limit = DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT;
 	ops.memory_increment = DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT;
 
-	while ((opt = getopt (argc, argv, "p:t:DEFI:L:M:T:")) != -1) {
+	while ((opt = getopt (argc, argv, "hp:t:DEFI:L:M:T:")) != -1) {
 		switch (opt) {
+		case 'h': print_usage_exit (argv[0]);
 		case 'p': {
 			int port;
 			sscanf (optarg, "%d", &port);
