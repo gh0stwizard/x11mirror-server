@@ -30,6 +30,12 @@ LIBS_MHD = $(shell $(PKG_CONFIG) --libs libmicrohttpd)
 DEFS_IM = $(shell $(PKG_CONFIG) --cflags MagickWand)
 LIBS_IM = $(shell $(PKG_CONFIG) --libs MagickWand)
 
+ifeq ($(shell $(PKG_CONFIG) --max-version=7 MagickCore || echo 7),7)
+DEFS_IM += -DIM_VERSION=7
+else
+DEFS_IM += -DIM_VERSION=6
+endif
+
 ifeq ($(ENABLE_DEBUG),YES)
 DEFS_OPTIONS += -D_DEBUG
 endif

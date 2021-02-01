@@ -3,7 +3,11 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <limits.h>
-#include <wand/MagickWand.h>
+#if (defined IM_VERSION) && IM_VERSION >= 7
+	#include <MagickWand/MagickWand.h>
+#else
+	#include <wand/MagickWand.h>
+#endif
 
 #ifndef PATH_MAX
 #define PATH_MAX 1024
