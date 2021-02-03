@@ -1,5 +1,5 @@
-#ifndef __SERVER_H
-#define __SERVER_H
+#ifndef XMS_SERVER_H
+#define XMS_SERVER_H
 
 #include "mhd.h"
 #include "server.h"
@@ -9,10 +9,10 @@
 extern char *XMS_STORAGE_DIR;
 
 
-extern int
+extern MHD_RESULT
 accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen);
 
-extern int
+extern MHD_RESULT
 answer_cb (	void *cls,
 		struct MHD_Connection *connection,
 		const char *url,
@@ -35,4 +35,4 @@ init_server_data (void);
 extern void
 free_server_data (void);
 
-#endif /* __SERVER_H */
+#endif /* XMS_SERVER_H */

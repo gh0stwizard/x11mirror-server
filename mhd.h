@@ -1,5 +1,5 @@
-#ifndef _MHD_H
-#define _MHD_H
+#ifndef XMS_MHD_H
+#define XMS_MHD_H
 
 /*
    Taken from microhttpd.h
@@ -27,4 +27,11 @@
 #include <stdarg.h>
 #include <microhttpd.h>
 
-#endif /* _MHD_H */
+/* https://git.gnunet.org/gnunet.git/tree/src/include/gnunet_mhd_compat.h */
+#if MHD_VERSION >= 0x00097002
+#define MHD_RESULT enum MHD_Result
+#else
+#define MHD_RESULT int
+#endif
+
+#endif /* XMS_MHD_H */

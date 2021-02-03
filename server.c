@@ -71,7 +71,7 @@ volatile bool busy = false;
 #define XMS_FILE_CONTENT_TYPE "image/jpeg"
 
 
-static int
+static MHD_RESULT
 upload_post_chunk (	void *coninfo_cls,
 			enum MHD_ValueKind kind,
 			const char *key,
@@ -101,7 +101,7 @@ file_reader_free_cb (void *cls);
 /* ------------------------------------------------------------------ */
 
 
-extern int
+extern MHD_RESULT
 accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen)
 {
 #if defined(_DEBUG)
@@ -123,7 +123,7 @@ accept_policy_cb (void *cls, const struct sockaddr *addr, socklen_t addrlen)
 }
 
 
-extern int
+extern MHD_RESULT
 answer_cb (	void *cls,
 		struct MHD_Connection *connection,
 		const char *url,
@@ -162,7 +162,7 @@ answer_cb (	void *cls,
 					(void *) req);
 
 			if (req->pp == NULL) {
-				warn (	connection,
+				warn(connection,
 					"failed to create post processor");
 				destroy_request_ctx (req);
 				return MHD_NO;
@@ -302,7 +302,7 @@ answer_cb (	void *cls,
 }
 
 
-static int
+static MHD_RESULT
 upload_post_chunk (void *con_cls,
               enum MHD_ValueKind kind,
               const char *key,
