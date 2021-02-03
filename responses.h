@@ -1,5 +1,5 @@
-#ifndef __RESPONSES_H
-#define __RESPONSES_H
+#ifndef XMS_RESPONSES_H
+#define XMS_RESPONSES_H
 
 
 enum {
@@ -23,4 +23,4 @@ init_mhd_responses (void);
 extern void
 free_mhd_responses (void);
 
-#endif /* __RESPONSES_H */
+#endif /* XMS_RESPONSES_H */

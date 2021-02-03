@@ -1,5 +1,5 @@
-#ifndef __COMMON_H
-#define __COMMON_H
+#ifndef XMS_COMMON_H
+#define XMS_COMMON_H
 
 
 #if defined (_DEBUG)
@@ -18,4 +18,4 @@
 extern void
 die (const char *fmt, ...);
 
-#endif /* __COMMON_H */
+#endif /* XMS_COMMON_H */

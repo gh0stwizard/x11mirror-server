@@ -1,5 +1,5 @@
-#ifndef _CONTEXTS_H
-#define _CONTEXTS_H
+#ifndef XMS_CONTEXTS_H
+#define XMS_CONTEXTS_H
 
 #include "mhd.h"
 #include <stdbool.h>
@@ -33,4 +33,4 @@ typedef struct _request_ctx {
 	bool getfile;
 } request_ctx;
 
-#endif /* _CONTEXTS_H */
+#endif /* XMS_CONTEXTS_H */

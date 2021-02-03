@@ -1,5 +1,5 @@
-#ifndef _SUSPEND_H
-#define _SUSPEND_H
+#ifndef XMS_SUSPEND_H
+#define XMS_SUSPEND_H
 
 #include "mhd.h"
 #include "contexts.h"
@@ -20,4 +20,4 @@ suspend_connection (struct MHD_Connection *connection);
 extern void
 resume_next (void);
 
-#endif /* _SUSPEND_H */
+#endif /* XMS_SUSPEND_H */

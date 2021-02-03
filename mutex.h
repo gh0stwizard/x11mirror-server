@@ -1,5 +1,5 @@
-#ifndef _SIMPLE_MUTEX_H
-#define _SIMPLE_MUTEX_H
+#ifndef XMS_SIMPLE_MUTEX_H
+#define XMS_SIMPLE_MUTEX_H
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -78,4 +78,4 @@ simple_mutex_unlock(SIMPLE_MUTEX *mutex)
 	}
 #endif
 
-#endif /* _SIMPLE_MUTEX_H */
+#endif /* XMS_SIMPLE_MUTEX_H */

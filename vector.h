@@ -3,8 +3,8 @@
  * Peter Hornyack and Katelin Bailey, 12/8/11, University of Washington
  *     https://gist.github.com/pjh/1453219
  */
-#ifndef _AFV_VECTOR_H__
-#define _AFV_VECTOR_H__
+#ifndef XMS_AFV_VECTOR_H
+#define XMS_AFV_VECTOR_H
 
 #include <stdbool.h>
 #include <sys/types.h>
@@ -104,4 +104,4 @@ vector_qsort_r(VECTOR *l,
 #ifdef __cplusplus
 }
 #endif
-#endif /* _AFV_VECTOR_H__ */
+#endif /* XMS_AFV_VECTOR_H */
