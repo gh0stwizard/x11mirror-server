@@ -22,7 +22,7 @@ init_suspend_pool (void)
 	pool = vector_new ();
 
 	if (pool == NULL)
-		die ("failed to initialize suspend pool");
+		die ("failed to initialize suspend pool\n");
 }
 
 
@@ -65,16 +65,16 @@ resume_all_connections (void)
 			warn (connection, "resumed");
 #endif
 		}
-		else
-			/* XXX: thread-safe die() */
-			debug ("! FATAL ERROR: get connection entry");
+		else {
+			fatal ("! FATAL ERROR: get connection entry");
+		}
 	}
 
 	/* purge the pool */
 	if (vector_count (pool) == total) {
-		if (! vector_reset (pool))
-			/* XXX: thread-safe die() */
-			debug ("! FATAL ERROR: reset pool");
+		if (! vector_reset (pool)) {
+			fatal ("! FATAL ERROR: reset pool");
+		}
 	}
 }
 
@@ -83,7 +83,7 @@ extern void
 resume_next (void)
 {
 	size_t total;
-	void *entry;	
+	void *entry;
 	struct MHD_Connection *connection;
 
 
@@ -94,7 +94,7 @@ resume_next (void)
 
 	if (! vector_delete (pool, 0, &entry)) {
 		/* XXX: thread-safe die() */
-		debug ("! FATAL ERROR: resume next connection: "
+		fatal ("! FATAL ERROR: resume next connection: "
 			"vector_delete: %s\n",
 			strerror (vector_get_errno (pool)));
 		return;
@@ -107,8 +107,9 @@ resume_next (void)
 		warn (connection, "resumed");
 #endif
 	}
-	else
+	else {
 		debug ("! ERROR: resume next connection: invalid entry\n");
+	}
 }
 
 
@@ -122,8 +123,7 @@ suspend_connection (struct MHD_Connection *connection)
 #endif
 	}
 	else {
-		/* XXX: thread-safe die() */
-		debug ("! FATAL ERROR: add connection to pool: %s\n",
+		fatal ("! FATAL ERROR: add connection to pool: %s\n",
 			strerror (vector_get_errno (pool)));
 	}
 }

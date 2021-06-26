@@ -643,7 +643,7 @@ init_server_data (void)
      */
     errno = 0;
     if (remove (XMS_TEMP_FILE) != 0 && errno != ENOENT)
-        die ("FATAL ERROR: remove temporary file `%s': %s",
+        die ("FATAL ERROR: remove temporary file `%s': %s\n",
              XMS_TEMP_FILE, strerror (errno));
 }
 

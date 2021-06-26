@@ -1,16 +1,15 @@
+#include <assert.h>
 #include "warn.h"
-#include "timeinfo.h"
+#include "vlogger.h"
 
 
 extern void
 warn (struct MHD_Connection *connection, const char *fmt, ...)
 {
-	va_list args;
+	va_list ap;
 	const union MHD_ConnectionInfo *ci;
 	char *ip;
 	in_port_t port = 0;
-	char date[DATE_SIZE];
-	char *datep = date;
 
 
 	ci = MHD_get_connection_info (
@@ -25,14 +24,12 @@ warn (struct MHD_Connection *connection, const char *fmt, ...)
 	else
 		ip = "<unknown>";
 
-	va_start (args, fmt);
+	va_start (ap, fmt);
+	ssize_t bufsz = vsnprintf (NULL, 0, fmt, ap);
+	char *buf = malloc (bufsz + 1);
+	assert (buf != NULL);
+	vsnprintf (buf, bufsz + 1, fmt, ap);
+	va_end (ap);
 
-	if (get_current_time_string (&datep, sizeof(date)))
-		fprintf (stderr, "%s ! %s port %u: ", date, ip, port);
-	else
-		fprintf (stderr, "! %s port %u: ", ip, port);
-
-	vfprintf (stderr, fmt, args);
-	fprintf (stderr, "\n");
-	va_end (args);
+	vlogger_log (VLOGGER_ERROR, "! %s port %u: %s\n", ip, port, buf);
 }

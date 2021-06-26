@@ -1,5 +1,3 @@
-#include "timeinfo.h"
-#include "common.h"
 #include <stdio.h>
 #include <stdbool.h>
 #include <limits.h>
@@ -8,6 +6,9 @@
 #else
 	#include <wand/MagickWand.h>
 #endif
+#include "common.h"
+#include "vlogger.h"
+
 
 #ifndef PATH_MAX
 #define PATH_MAX 1024
@@ -31,16 +32,8 @@ error_handler ( const ExceptionType severity,
 		const char *reason,
 		const char *description)
 {
-	char date[DATE_SIZE];
-	char *datep = date;
 	(void) severity;
-	(void) description;
-
-
-	if (get_current_time_string (&datep, sizeof(date)))
-		fprintf (stderr, "%s ! %s\n", date, reason);
-	else
-		fprintf (stderr, "%s\n", reason);
+	vlogger_log (VLOGGER_ERROR, "imagemagick: %s (%s)\n", reason, description);
 }
 
 

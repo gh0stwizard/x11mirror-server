@@ -3,9 +3,12 @@
 #include "server.h"
 #include "suspend.h"
 #include "responses.h"
+#include "vlogger.h"
 #include <errno.h>
 #include <limits.h>
 #include <time.h>
+#include <err.h>
+#include <signal.h>
 
 #ifdef _MSC_VER
 #ifndef strcasecmp
@@ -33,12 +36,13 @@
 
 
 typedef struct _httpd_options {
-	unsigned int 	mode;
-	uint16_t 	port;
-	int 		connect_timeout;
-	unsigned int	thread_pool_size;
-	size_t		memory_limit;
-	size_t		memory_increment;
+	unsigned int    mode;
+	uint16_t        port;
+	int             connect_timeout;
+	unsigned int    thread_pool_size;
+	size_t          memory_limit;
+	size_t          memory_increment;
+	int             daemonize;
 } httpd_options;
 
 
@@ -167,6 +171,8 @@ print_usage (const char *argv0)
 	fprintf (stderr, "Options:\n");
 #define desc(o,d) fprintf (stderr, "  %-24s  %s\n", o, d);
 	desc ("-h", "print this help");
+	desc ("-d", "daemonize and enables syslog logging");
+	desc ("-q", "be quiet, i.e. disables all logging");
 	/* listener port */
 	snprintf (buffer, BUFFER_SIZE,
 		"a port number to listen, default %d",
@@ -208,15 +214,58 @@ print_usage (const char *argv0)
 }
 
 
+static void
+daemonize (void)
+{
+	pid_t cpid;
+	struct timespec wtime = { .tv_sec = 0, .tv_nsec = 100 * 1000000 };
+
+	while ((cpid = fork ()) == -1)
+		nanosleep(&wtime, NULL);
+	if (cpid > 0)
+		exit (EXIT_SUCCESS);
+}
+
+
+static volatile sig_atomic_t sigflag;
+static sigset_t newmask, oldmask, zeromask;
+
+
+static void
+sig_cb (int signo)
+{
+	(void) signo;
+	sigflag = 1;
+}
+
+
+static void
+init_signal_handlers (void)
+{
+	if (signal (SIGTERM, sig_cb) == SIG_ERR)
+		err (1, "signal");
+	if (signal (SIGINT, sig_cb) == SIG_ERR)
+		err (1, "signal");
+	sigemptyset (&zeromask);
+	sigemptyset (&newmask);
+	sigaddset (&newmask, SIGTERM);
+	sigaddset (&newmask, SIGINT);
+	if (sigprocmask (SIG_BLOCK, &newmask, &oldmask) < 0)
+		err (1, "sig_block");
+}
+
+
 extern int
 main (int argc, char *argv[])
 {
 	struct MHD_Daemon *daemon;
 	httpd_options ops;
+	vlogger_t vlogger;
 	int opt;
 	const struct timespec ts_wait = { 2, 0 };
 
 
+	ops.daemonize = 0;
 	ops.mode = DEFAULT_HTTPD_MODE;
 	ops.port = DEFAULT_HTTPD_PORT;
 	ops.connect_timeout = DEFAULT_HTTPD_CONNECTION_TIMEOUT;
@@ -224,21 +273,27 @@ main (int argc, char *argv[])
 	ops.memory_limit = DEFAULT_HTTPD_CONNECTION_MEMORY_LIMIT;
 	ops.memory_increment = DEFAULT_HTTPD_CONNECTION_MEMORY_INCREMENT;
 
-	while ((opt = getopt (argc, argv, "hp:t:DEFI:L:M:T:")) != -1) {
+	vlogger.syslog_ident = "x11mirror-server";
+	vlogger.syslog_facility = "";
+	vlogger.mode = VLOGGER_MODE_NORMAL;
+	vlogger.outfile = NULL;
+	vlogger.errfile = NULL;
+
+	while ((opt = getopt (argc, argv, "dqhp:t:DEFI:L:M:T:")) != -1) {
 		switch (opt) {
 		case 'h': print_usage_exit (argv[0]);
 		case 'p': {
 			int port;
 			sscanf (optarg, "%d", &port);
 			if (port <= 0 || port > 65536)
-				die ("Valid port range 1-65536: %s.", optarg);
+				die ("Valid port range 1-65536: %s.\n", optarg);
 			ops.port = port;
 		} break;
 		case 't': {
 			int timeout;
 			sscanf (optarg, "%d", &timeout);
 			if (timeout < 0)
-				die ("Invalid timeout: %s.", optarg);
+				die ("Invalid timeout: %s.\n", optarg);
 			ops.connect_timeout = timeout;
 		} break;
 		case 'D':
@@ -260,7 +315,7 @@ main (int argc, char *argv[])
 			int increment;
 			sscanf (optarg, "%d", &increment);
 			if (increment < 0)
-				die ("Invalid memory increment: %s.", optarg);
+				die ("Invalid memory increment: %s.\n", optarg);
 			ops.memory_increment = increment;
 		} break;
 		case 'L': {
@@ -272,16 +327,24 @@ main (int argc, char *argv[])
 			int limit;
 			sscanf (optarg, "%d", &limit);
 			if (limit < 0)
-				die ("Invalid memory limit: %s.", optarg);
+				die ("Invalid memory limit: %s.\n", optarg);
 			ops.memory_limit = limit;
 		} break;
 		case 'T': {
 			int num;
 			sscanf (optarg, "%d", &num);
 			if (num <= 0)
-				die ("Invalid thread pool size: %s.", optarg);
+				die ("Invalid thread pool size: %s.\n", optarg);
 			ops.thread_pool_size = num;
 		} break;
+		case 'q':
+			vlogger.mode = VLOGGER_MODE_SILENT;
+			break;
+		case 'd':
+			if (vlogger.mode != VLOGGER_MODE_SILENT)
+				vlogger.mode = VLOGGER_MODE_SYSLOG;
+			ops.daemonize = 1;
+			break;
 		default: /* -? */
 			print_usage_exit (argv[0]);
 			break;
@@ -291,6 +354,13 @@ main (int argc, char *argv[])
 	/* default storage location */
 	if (XMS_STORAGE_DIR == NULL)
 		XMS_STORAGE_DIR = ".";
+
+	if (ops.daemonize)
+		daemonize ();
+
+	init_signal_handlers ();
+
+	vlogger_open (&vlogger);
 
 	/* initialize server internal data (server.c) */
 	init_server_data ();
@@ -304,18 +374,18 @@ main (int argc, char *argv[])
 	daemon = start_httpd (&ops);
 
 	if (daemon == NULL) {
-		fprintf (stderr, "failed to start daemon\n");
+		vlogger_log (VLOGGER_FATAL, "failed to start daemon\n");
 		return 1;
 	}
 
-	(void) getchar ();
+	while (sigflag == 0)
+		sigsuspend (&zeromask);
+	sigflag = 0;
 
 	debug ("* Shutting down the daemon...\n");
 
 	resume_all_connections ();
-	/* we have to wait a bit, to get a chance MHD resume
-	 * connections properly
-         */
+	/* we have to wait a bit, to get a chance MHD resume connections properly */
 	nanosleep (&ts_wait, NULL);
 
 	/* FIXME: replace default callbacks to stubs */
@@ -323,6 +393,8 @@ main (int argc, char *argv[])
 	free_mhd_responses ();
 	free_suspend_pool ();
 	free_server_data ();
+
+	vlogger_close ();
 
 	return 0;
 }
