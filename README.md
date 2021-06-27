@@ -10,9 +10,12 @@ This is a HTTP server and it was created to demostrate abillities of
 ## Usage
 
 ```
-shell> ./x11mirror-server -?
+% ./x11mirror-server -h
 Usage: ./x11mirror-server [-p PORT] [OPTIONS]
 Options:
+  -h                        print this help
+  -d                        daemonize and enables syslog logging
+  -q                        be quiet, i.e. disables all logging
   -p PORT                   a port number to listen, default 8888
   -t CONNECTION_TIMEOUT     a connection timeout in seconds, default 15 sec.
   -I MEMORY_INCREMENT       increment to use for growing the read buffer, default 1024
@@ -24,7 +27,7 @@ Options:
   -T THREADS_NUM            an amount of threads, default 1
 ```
 
-## Dependences
+## Dependencies
 
 * ImageMagick development files (must be built with X11 support) and all
   its dependencies (for instance, zlib)
@@ -36,10 +39,10 @@ Options:
 Tested only on GNU/Linux at the moment.
 
 ```
-shell> # you may tell where is libmicrohttpd has installed like that
-shell> export PKG_CONFIG_PATH=/path/to/lib/pkgconfig
-shell> export LD_LIBRARY_PATH=/path/to/lib
-shell> make
+% # you may tell where is libmicrohttpd has installed like that
+% export PKG_CONFIG_PATH=/path/to/lib/pkgconfig
+% export LD_LIBRARY_PATH=/path/to/lib
+% make
 ```
 
 
