@@ -10,7 +10,7 @@
 #define _DEFAULT "<html>"\
 "<head>"\
 "<title>x11mirror-server</title>"\
-"<meta http-equiv=\"refresh\" content=\"5\">"\
+"<meta http-equiv=\"refresh\" content=\"1\">"\
 "</head>"\
 "<body>"\
 "<img alt=\"pwn2own\" src=\"/get.jpg\"></img>"\
@@ -73,14 +73,14 @@ init_mhd_responses (void)
 				MHD_RESPMEM_PERSISTENT);
 
 		if (XMS_RESPONSES[i] == NULL)
-			die ("failed to create response #%d", i);
+			die ("failed to create response #%d\n", i);
 
 		if (MHD_NO == MHD_add_response_header (
 			XMS_RESPONSES[i],
 			MHD_HTTP_HEADER_CONTENT_TYPE,
 			DEFAULT_CONTENT_TYPE))
 		{
-			die ("failed to add header to response #%d", i);
+			die ("failed to add header to response #%d\n", i);
 		}
 	}
 }
