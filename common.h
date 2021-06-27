@@ -3,13 +3,21 @@
 
 #include "vlogger.h"
 
-#if defined (_DEBUG)
+#define info(...) do { \
+	vlogger_log (VLOGGER_INFO, __VA_ARGS__); \
+} while (0)
+
+#define warn(...) do { \
+	vlogger_log (VLOGGER_WARN, __VA_ARGS__); \
+} while (0)
+
+#define note(...) do { \
+	vlogger_log (VLOGGER_NOTE, __VA_ARGS__); \
+} while (0)
+
 #define debug(...) do { \
 	vlogger_log (VLOGGER_DEBUG, __VA_ARGS__); \
 } while (0)
-#else
-#define debug(...) do { /* nop */ } while (0)
-#endif
 
 #define fatal(...) do { \
 	vlogger_log (VLOGGER_FATAL, __VA_ARGS__); \

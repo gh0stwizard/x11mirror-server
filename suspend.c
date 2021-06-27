@@ -2,7 +2,7 @@
 #include "suspend.h"
 #include "vector.h"
 #include "common.h"
-#include "warn.h"
+#include "mhd_log.h"
 #include <sys/select.h>
 #include <time.h>
 #include <errno.h>

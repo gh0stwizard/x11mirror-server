@@ -10,7 +10,7 @@
 #define _DEFAULT "<html>"\
 "<head>"\
 "<title>x11mirror-server</title>"\
-"<meta http-equiv=\"refresh\" content=\"5\">"\
+"<meta http-equiv=\"refresh\" content=\"1\">"\
 "</head>"\
 "<body>"\
 "<img alt=\"pwn2own\" src=\"/get.jpg\"></img>"\

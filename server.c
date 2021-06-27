@@ -8,10 +8,9 @@
 #include "contexts.h"
 #include "imagemagick.h"
 #include "mhd.h"
-#include "mhd_utils.h"
 #include "responses.h"
 #include "suspend.h"
-#include "warn.h"
+#include "mhd_log.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -161,7 +160,7 @@ answer_cb (void *cls,
         req = malloc (sizeof (*req));
 
         if (req == NULL) {
-            warn (connection, "malloc (req) failed");
+            mhd_error (connection, "malloc (req) failed");
             return MHD_NO;
         }
 
@@ -182,7 +181,7 @@ answer_cb (void *cls,
                                            (void *) req);
 
             if (req->pp == NULL) {
-                warn (connection, "failed to create post processor");
+                mhd_error (connection, "failed to create post processor");
                 destroy_request_ctx (req);
                 return MHD_NO;
             }
@@ -192,8 +191,15 @@ answer_cb (void *cls,
         else if (0 == strcasecmp (method, MHD_HTTP_METHOD_GET)) {
             req->type = GET;
 
+            mhd_note (connection, "GET %s", url);
+
             if (strncmp (url, "/get.jpg", 9) == 0)
                 req->getfile = true;
+
+            if (strncmp (url, "/favicon.ico", 13) == 0) {
+                req->response = XMS_RESPONSES[XMS_PAGE_NOT_FOUND];
+                req->status = MHD_HTTP_NOT_FOUND;
+            }
         }
         else {
             req->response = XMS_RESPONSES[XMS_PAGE_BAD_METHOD];
@@ -269,12 +275,12 @@ answer_cb (void *cls,
                      * seems to be everything is good
                      */
                     req->uploader = true;
-                    warn (connection, "uploading...");
+                    mhd_debug (connection, "uploading...");
                 }
             }
             else {
                 (void) remove (XMS_TEMP_FILE);
-                warn (connection, "upload has been failed");
+                mhd_error (connection, "upload has been failed");
             }
 
             /*
@@ -306,22 +312,22 @@ answer_cb (void *cls,
 
             errno = 0;
             if (rename (XMS_TEMP_FILE, XMS_DEST_FILE) == 0) {
-                warn (connection, "converting...");
+                mhd_debug (connection, "converting...");
 
                 if (convert (XMS_DEST_FILE, XMS_CONV_FILE))
-                    warn (connection, "uploaded!");
+                    mhd_debug (connection, "uploaded!");
                 else
-                    warn (connection, "uploaded with error: convert");
+                    mhd_debug (connection, "uploaded with error: convert");
             }
             else {
                 /*
-                 * XXX: fatal error?? 
+                 * XXX: fatal error??
                  */
                 /*
                  * delete the temp file, it is not needed anymore
                  */
                 (void) remove (XMS_TEMP_FILE);
-                warn (connection,
+                mhd_error (connection,
                       "uploaded with error: rename: %s", strerror (errno));
             }
         }
@@ -452,13 +458,9 @@ process_get_request (struct MHD_Connection *connection, request_ctx * req)
     int ret;
 
     if (!req->getfile) {
-        warn (connection, "ask default page");
-
         return MHD_queue_response (connection, MHD_HTTP_OK,
                                    XMS_RESPONSES[XMS_PAGE_DEFAULT]);
     }
-
-    warn (connection, "downloading...");
 
     fh = fopen (XMS_CONV_FILE, "rb");
 

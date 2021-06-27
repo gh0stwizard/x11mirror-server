@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <limits.h>
 #include <time.h>
-#include <err.h>
 #include <signal.h>
 
 #ifdef _MSC_VER
@@ -114,28 +113,28 @@ start_httpd (httpd_options *ops)
 	daemon_options[MEMORY_LIMIT].value = ops->memory_limit;
 	daemon_options[MEMORY_INCREMENT].value = ops->memory_increment;
 
-	debug ("* Powered by libmicrohttpd version %s (0x%08x)\n",
+	info ("* Powered by libmicrohttpd version %s (0x%08x)\n",
 		MHD_get_version (),
 		MHD_VERSION);
-	debug ("* Start listener on port %d\n", ops->port);
-	debug ("* Connection timeout: %d\n", ops->connect_timeout);
-	debug ("* Thread pool size: %d\n", ops->thread_pool_size);
-	debug ("* Memory limit per connection: %zu\n", ops->memory_limit);
-	debug ("* Memory increment per connection: %zu\n", ops->memory_increment);
+	info ("* Start listener on port %d\n", ops->port);
+	info ("* Connection timeout: %d\n", ops->connect_timeout);
+	info ("* Thread pool size: %d\n", ops->thread_pool_size);
+	info ("* Memory limit per connection: %zu\n", ops->memory_limit);
+	info ("* Memory increment per connection: %zu\n", ops->memory_increment);
 
 #if MHD_VERSION >= 0x00095100
 	if (ops->mode & MHD_USE_EPOLL)
 #else
 	if (ops->mode & MHD_USE_EPOLL_LINUX_ONLY)
 #endif
-		debug ("* Poller backend: epoll\n");
+		info ("* Poller backend: epoll\n");
 	else
-		debug ("* Poller backend: select\n");
+		info ("* Poller backend: select\n");
 
 	if (ops->mode & MHD_USE_TCP_FASTOPEN)
-		debug ("* TCP Fast Open: enabled\n");
+		info ("* TCP Fast Open: enabled\n");
 	else
-		debug ("* TCP Fast Open: disabled\n");
+		info ("* TCP Fast Open: disabled\n");
 
 
 	daemon = MHD_start_daemon (
@@ -153,7 +152,7 @@ start_httpd (httpd_options *ops)
 static void
 stop_httpd (struct MHD_Daemon *daemon)
 {
-	debug ("* Shutdown complete\n");
+	warn ("* Shutdown complete\n");
 
 	if (daemon != NULL)
 		MHD_stop_daemon (daemon);
@@ -243,15 +242,15 @@ static void
 init_signal_handlers (void)
 {
 	if (signal (SIGTERM, sig_cb) == SIG_ERR)
-		err (1, "signal");
+		die ("signal\n");
 	if (signal (SIGINT, sig_cb) == SIG_ERR)
-		err (1, "signal");
+		die ("signal\n");
 	sigemptyset (&zeromask);
 	sigemptyset (&newmask);
 	sigaddset (&newmask, SIGTERM);
 	sigaddset (&newmask, SIGINT);
 	if (sigprocmask (SIG_BLOCK, &newmask, &oldmask) < 0)
-		err (1, "sig_block");
+		die ("sig_block\n");
 }
 
 
@@ -374,7 +373,7 @@ main (int argc, char *argv[])
 	daemon = start_httpd (&ops);
 
 	if (daemon == NULL) {
-		vlogger_log (VLOGGER_FATAL, "failed to start daemon\n");
+		fatal ("failed to start daemon\n");
 		return 1;
 	}
 
@@ -382,7 +381,7 @@ main (int argc, char *argv[])
 		sigsuspend (&zeromask);
 	sigflag = 0;
 
-	debug ("* Shutting down the daemon...\n");
+	warn ("* Shutting down the daemon...\n");
 
 	resume_all_connections ();
 	/* we have to wait a bit, to get a chance MHD resume connections properly */
