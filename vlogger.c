@@ -267,6 +267,7 @@ vlogger_log (int level, const char *fmt, ...)
         vsnprintf (buf, bufsz + 1, fmt, ap);
         int priority = vlogger_syslog_levels[level] | vlogger_syslog_facility;
         syslog (priority, buf);
+        free (buf);
 #endif
     }
     else {

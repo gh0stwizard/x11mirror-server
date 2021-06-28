@@ -29,8 +29,8 @@ mhd_vlog (vlogger_level_t level,
 	char *buf = malloc (bufsz + 1);
 	assert (buf != NULL);
 	vsnprintf (buf, bufsz + 1, fmt, ap);
-
 	vlogger_log (level, "%s:%u: %s\n", ip, port, buf);
+	free (buf);
 }
 
 
