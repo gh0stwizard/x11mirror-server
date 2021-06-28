@@ -152,7 +152,7 @@ start_httpd (httpd_options *ops)
 static void
 stop_httpd (struct MHD_Daemon *daemon)
 {
-	warn ("* Shutdown complete\n");
+	info ("* Shutdown complete\n");
 
 	if (daemon != NULL)
 		MHD_stop_daemon (daemon);
@@ -381,7 +381,7 @@ main (int argc, char *argv[])
 		sigsuspend (&zeromask);
 	sigflag = 0;
 
-	warn ("* Shutting down the daemon...\n");
+	note ("* Shutting down the daemon...\n");
 
 	resume_all_connections ();
 	/* we have to wait a bit, to get a chance MHD resume connections properly */

@@ -15,6 +15,10 @@
 	vlogger_log (VLOGGER_NOTE, __VA_ARGS__); \
 } while (0)
 
+#define error(...) do { \
+	vlogger_log (VLOGGER_ERROR, __VA_ARGS__); \
+} while (0)
+
 #define debug(...) do { \
 	vlogger_log (VLOGGER_DEBUG, __VA_ARGS__); \
 } while (0)

@@ -7,7 +7,6 @@
 	#include <wand/MagickWand.h>
 #endif
 #include "common.h"
-#include "vlogger.h"
 
 
 #ifndef PATH_MAX
@@ -33,7 +32,7 @@ error_handler ( const ExceptionType severity,
 		const char *description)
 {
 	(void) severity;
-	vlogger_log (VLOGGER_ERROR, "imagemagick: %s (%s)\n", reason, description);
+	error ("imagemagick: %s (%s)\n", reason, description);
 }
 
 
@@ -75,8 +74,9 @@ convert (const char *in, const char *out)
 				CatchException (exception);
 		}
 	}
-	else
-		debug ("! FATAL ERROR: failed to initialize IM\n");
+	else {
+		die ("failed to initialize IM\n");
+	}
 
 	DestroyImageInfo (image_info);
 	DestroyExceptionInfo (exception);
