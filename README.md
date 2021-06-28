@@ -29,17 +29,27 @@ Options:
 
 ## Dependencies
 
-* ImageMagick development files (must be built with X11 support) and all
+* C99 compiler
+* GNU make
+* `pkg-config`
+* `ImageMagick` development files (must be built with X11 support) and all
   its dependencies (for instance, zlib)
-* libmicrohttpd (recommended to build with latest git master branch)
+* `libmicrohttpd` (recommended to build with 0.9.72+)
 
 
 ## Build
 
 Tested only on GNU/Linux at the moment.
+By default all dependencies will be found by `pkg-config`.
 
 ```
-% # you may tell where is libmicrohttpd has installed like that
+% make
+```
+
+If you have installed libmicrohttpd to non-standard location, then
+you may tell where is libmicrohttpd has installed like that:
+
+```
 % export PKG_CONFIG_PATH=/path/to/lib/pkgconfig
 % export LD_LIBRARY_PATH=/path/to/lib
 % make
